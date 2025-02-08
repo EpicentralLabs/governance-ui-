@@ -614,11 +614,13 @@ export interface SymmetryWithdrawForm {
 }
 
 export interface CreateMeteoraPoolForm {
-  governedAccount?: AssetAccount
-  tokenAMint: string
-  tokenBMint: string
-  authority: string
-  fee: number
-  
-
+  governedTokenAccount?: AssetAccount; 
+  baseToken: string;  
+  quoteToken: string; 
+  authority: string;  
+  baseFee: string;  
+  fee: number; 
+  binStep: string; 
+  initialPrice: string;  
 }
+

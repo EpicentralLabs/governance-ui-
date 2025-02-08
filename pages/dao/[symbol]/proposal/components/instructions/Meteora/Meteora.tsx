@@ -1,99 +1,101 @@
-import { Connection, PublicKey } from '@solana/web3.js';
-import { AccountMetaData } from '@solana/spl-governance';
-import { useQuery } from '@tanstack/react-query';
-import { getMintDecimalAmountFromNatural } from '@tools/sdk/units';
-import { TOKEN_PROGRAM_ID, AccountLayout, MintLayout } from '@solana/spl-token'; 
-
-// Helper function to fetch token account
-const fetchTokenAccount = async (connection: Connection, publicKey: PublicKey) => {
-  const accountInfo = await connection.getAccountInfo(publicKey);
-  if (!accountInfo || !accountInfo.owner.equals(TOKEN_PROGRAM_ID)) return null;
-
-  // Decode token account data using AccountLayout
-  const decodedData = AccountLayout.decode(accountInfo.data);
-  const mint = decodedData.mint; // Extract the mint address
-
-  return { ...decodedData, mint: new PublicKey(mint) };
-};
-
-// Helper function to fetch mint info
-const fetchMintInfo = async (connection: Connection, mint: PublicKey) => {
-  if (!mint) return null;
-  const mintInfo = await connection.getAccountInfo(mint);
-  if (!mintInfo) return null;
-
-  // Decode mint account data using MintLayout
-  const decodedMintInfo = MintLayout.decode(mintInfo.data); // Decode the mint account data
-  return decodedMintInfo; // Return the decoded mint info
-};
-
+import React, { useState, useContext } from 'react';
+import { Connection } from '@solana/web3.js';
+import { NewProposalContext } from '../../../new';
+import GovernedAccountSelect from '../../GovernedAccountSelect';
+import useGovernanceAssets from '@hooks/useGovernanceAssets';
+import Input from '@components/inputs/Input';
+import Select from '@components/inputs/Select';
+import { CreateMeteoraPoolForm } from '@utils/uiTypes/proposalCreationTypes';
+import { AssetAccount } from '@utils/uiTypes/assets';
 export const METEORA_INSTRUCTIONS = {
   'M3mxk5W2tt27WGZWpZR7hUpV7c5Hqm8GfwUtbyLJGrj1': {
-    // Create Pool instruction
     1: {
       name: 'Create Liquidity Pool',
       accounts: [
-        { name: 'Token A Mint' },
-        { name: 'Token B Mint' },
+        { name: 'Base Token' },
+        { name: 'Quote Token' },
         { name: 'Pool Authority' },
         { name: 'Fee Account' },
         { name: 'Pool State' },
         { name: 'Token Program' },
       ],
-      getDataUI: (
-        connection: Connection,
-        data: Uint8Array,
-        accounts: AccountMetaData[]
-      ) => {
-        // Query hooks for token accounts
-        const { data: tokenAAccount } = useQuery(
-          ['tokenAccount', accounts[0].pubkey],
-          () => fetchTokenAccount(connection, accounts[0].pubkey)
-        );
+      getDataUI: (connection: Connection) => {
+        console.log('connection', connection);
+        const { governance } = useContext(NewProposalContext);
+        const { governedTokenAccountsWithoutNfts } = useGovernanceAssets();
 
-        const { data: tokenBAccount } = useQuery(
-          ['tokenAccount', accounts[1].pubkey],
-          () => fetchTokenAccount(connection, accounts[1].pubkey)
-        );
+        const [form, setForm] = useState<CreateMeteoraPoolForm>({
+          governedTokenAccount: undefined,
+          baseToken: '',
+          quoteToken: 'SOL',
+          authority: '',
+          baseFee: '',
+          fee: 0,
+          binStep: '',
+          initialPrice: '0.00',
+        });
 
-        // Query hooks for mint info
-        const { data: tokenAMintInfo } = useQuery(
-          ['mintInfo', tokenAAccount?.mint],
-          () => fetchMintInfo(connection, tokenAAccount?.mint),
-          { enabled: !!tokenAAccount?.mint }
-        );
+        const handleSetForm = (value: AssetAccount | any, propertyName: string) => {
+          console.log('value', value);
+          setForm((prev) => ({ ...prev, [propertyName]: value }));
+        };
 
-        const { data: tokenBMintInfo } = useQuery(
-          ['mintInfo', tokenBAccount?.mint],
-          () => fetchMintInfo(connection, tokenBAccount?.mint),
-          { enabled: !!tokenBAccount?.mint }
-        );
-
-        // Render the UI
         return (
-          <div className="space-y-3">
-            <div>
-              <div className="font-bold">Token A:</div>
-              <div>
-                {tokenAAccount &&
-                  tokenAMintInfo &&
-                  getMintDecimalAmountFromNatural(
-                    tokenAMintInfo,
-                    tokenAAccount.amount
-                  ).toFormat()}
-              </div>
-            </div>
-            <div>
-              <div className="font-bold">Token B:</div>
-              <div>
-                {tokenBAccount &&
-                  tokenBMintInfo &&
-                  getMintDecimalAmountFromNatural(
-                    tokenBMintInfo,
-                    tokenBAccount.amount
-                  ).toFormat()}
-              </div>
-            </div>
+          <div className="space-y-4 p-4">
+            <h2 className="text-lg font-semibold">Create Liquidity Pool</h2>
+
+            <GovernedAccountSelect
+              label="Select Source of Funds"
+              governedAccounts={governedTokenAccountsWithoutNfts}
+              onChange={(value: AssetAccount) => handleSetForm(value, 'governedTokenAccount')}
+              value={form.governedTokenAccount}
+              governance={governance}
+              type="token"
+            />
+
+            <Select
+              label="Base Token"
+              value={form.baseToken}
+              onChange={(value: any) => handleSetForm(value, 'baseToken')}
+            >
+              <option value="">Select Base Token</option>
+              <option value="SOL">SOL</option>
+              <option value="USDC">USDC</option>
+              <option value="USDT">USDT</option>
+              <option value="Other">Other</option>
+            </Select>
+
+            <Select
+              label="Quote Token"
+              value={form.quoteToken}
+              onChange={(value) => handleSetForm(value, 'quoteToken')}
+            >
+              <option value="SOL">SOL</option>
+              <option value="USDC">USDC</option>
+              <option value="USDT">USDT</option>
+            </Select>
+
+            <Input
+              label="Base Fee"
+              type="number"
+              value={form.baseFee}
+              onChange={(e) => handleSetForm(e.target.value, 'baseFee')}
+            />
+
+            <Input
+              label="Bin Step"
+              type="number"
+              value={form.binStep}
+              onChange={(e) => handleSetForm(e.target.value, 'binStep')}
+            />
+
+            <Input
+              label="Initial Price"
+              type="number"
+              step="0.01"
+              value={form.initialPrice}
+              onChange={(e) => handleSetForm(e.target.value, 'initialPrice')}
+            />
           </div>
         );
       },
