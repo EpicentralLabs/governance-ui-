@@ -20,14 +20,34 @@ import { StrategyParameters } from '@meteora-ag/dlmm';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { MeteoraAddLiquidityForm } from '@utils/uiTypes/proposalCreationTypes';
 
+
 const strategyOptions = [
-  { label: 'Spot Balanced', value: 0 },
-  { label: 'Curve Balanced', value: 1 },
-  { label: 'BidAsk Balanced', value: 2 },
-  { label: 'Spot Imbalanced', value: 3 },
-  { label: 'Curve Imbalanced', value: 4 },
-  { label: 'BidAsk Imbalanced', value: 5 },
-];
+  {
+    name: 'Spot Balanced',
+    value: 0,
+  },
+  {
+    name: 'Curve Balanced',
+    value: 1,
+  },
+  {
+    name: 'BidAsk Balanced',
+    value: 2,
+  },
+  {
+    name: 'Spot Imbalanced',
+    value: 3,
+  },
+  {
+    name: 'Curve Imbalanced',
+    value: 4,
+  },
+  {
+    name: 'BidAsk Imbalanced',
+    value: 5,
+  },]
+ 
+console.log(strategyOptions)
 
 const DLMMAddLiquidity = ({
   index,
@@ -47,17 +67,19 @@ const DLMMAddLiquidity = ({
     governedAccount: undefined,
     dlmmPoolAddress: '',
     positionPubkey: '',
-    addAmountX: '0',
-    addAmountY: '0',
+    quoteToken: '0',
+    baseToken: '0',
     strategy: 0,
   });
+
+  console.log(JSON.stringify(form, null, 2));
 
   const schema = yup.object().shape({
     governedAccount: yup.object().nullable().required('Governed account is required'),
     dlmmPoolAddress: yup.string().required('DLMM Pool Address is required'),
     positionPubkey: yup.string().required('Position Pubkey is required'),
-    addAmountX: yup.number().required('Amount X is required').min(0, 'Amount X must be greater than or equal to 0'),
-    addAmountY: yup.number().required('Amount Y is required').min(0, 'Amount Y must be greater than or equal to 0'),
+    quoteToken: yup.number().required('quoteToken is required').min(0, 'quoteToken must be greater than or equal to 0'),
+    baseToken: yup.number().required('baseToken is required').min(0, 'baseToken must be greater than or equal to 0'),
     strategy: yup.number().required('Strategy is required'),
   });
 
@@ -106,8 +128,8 @@ const DLMMAddLiquidity = ({
       const mintDecimals = await getMintDecimals(dlmmPoolPk.toBase58());
       console.log(`Mint decimals: ${mintDecimals}`);
 
-      const xAmount = new BN(parseFloat(form.addAmountX) * Math.pow(10, mintDecimals));
-      const yAmount = new BN(parseFloat(form.addAmountY) * Math.pow(10, mintDecimals));
+      const xAmount = new BN(parseFloat(form.quoteToken) * Math.pow(10, mintDecimals));
+      const yAmount = new BN(parseFloat(form.baseToken) * Math.pow(10, mintDecimals));
 
       console.log(`Amounts calculated: xAmount = ${xAmount.toString()}, yAmount = ${yAmount.toString()}`);
 
@@ -165,7 +187,7 @@ const DLMMAddLiquidity = ({
 
   useEffect(() => {
     if (form.governedAccount) {
-      console.log(`Setting instructions for governed account: ${form.governedAccount?.governance}`);
+      console.log(`Setting instructions for governed account: ${JSON.stringify(form.governedAccount?.governance)}`);
       handleSetInstructions({
         governedAccount: form.governedAccount?.governance,
         getInstruction: () => getInstruction(),
@@ -198,16 +220,16 @@ const DLMMAddLiquidity = ({
       inputType: 'text',
     },
     {
-      label: 'Amount X',
-      initialValue: form.addAmountX,
-      name: 'addAmountX',
+      label: 'Quote Token',
+      initialValue: form.quoteToken,
+      name: 'quoteToken',
       type: InstructionInputType.INPUT,
       inputType: 'number',
     },
     {
-      label: 'Amount Y',
-      initialValue: form.addAmountY,
-      name: 'addAmountY',
+      label: 'Base Token',
+      initialValue: form.baseToken,
+      name: 'baseToken',
       type: InstructionInputType.INPUT,
       inputType: 'number',
     },
