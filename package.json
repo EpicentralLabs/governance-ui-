@@ -60,6 +60,7 @@
     "@jup-ag/referral-sdk": "0.1.5",
     "@marinade.finance/marinade-ts-sdk": "2.0.9",
     "@mean-dao/payment-streaming": "4.0.3",
+    "@mercurial-finance/dynamic-amm-sdk": "1.1.23",
     "@metaplex-foundation/beet": "0.7.2",
     "@metaplex-foundation/js": "0.19.4",
     "@metaplex-foundation/mpl-token-metadata": "2.10.0",
