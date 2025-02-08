@@ -1,11 +1,6 @@
-
 import React, { useContext, useEffect, useState } from 'react';
 import * as yup from 'yup';
-import {
-  Governance,
-  ProgramAccount,
-  serializeInstructionToBase64,
-} from '@solana/spl-governance';
+import { Governance, ProgramAccount, serializeInstructionToBase64 } from '@solana/spl-governance';
 import { validateInstruction } from '@utils/instructionTools';
 import { UiInstruction } from '@utils/uiTypes/proposalCreationTypes';
 import { PublicKey } from '@solana/web3.js';
@@ -18,7 +13,6 @@ import useGovernanceAssets from '@hooks/useGovernanceAssets';
 import DLMM from '@meteora-ag/dlmm';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { MeteoraClaimRewardsForm } from '@utils/uiTypes/proposalCreationTypes';
-
 
 const DLMMClaimAllRewards = ({
   index,
@@ -37,7 +31,7 @@ const DLMMClaimAllRewards = ({
     dlmmPoolAddress: '',
     rewards: '',
   });
-  const [formErrors, setFormErrors] = useState<any>({});
+  const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const { handleSetInstructions } = useContext(NewProposalContext);
   const shouldBeGoverned = !!(index !== 0 && governance);
 
@@ -54,9 +48,10 @@ const DLMMClaimAllRewards = ({
           return false;
         }
       }),
+    rewards: yup.string(),
   });
 
-  async function getInstruction(): Promise<UiInstruction> {
+  const getInstruction = async (): Promise<UiInstruction> => {
     const isValid = await validateInstruction({ schema, form, setFormErrors });
     if (!isValid || !form?.governedAccount?.governance?.account || !wallet?.publicKey) {
       return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
@@ -90,7 +85,8 @@ const DLMMClaimAllRewards = ({
       isValid: true,
       governance: form?.governedAccount?.governance,
     };
-  }
+  };
+
 
   const inputs: InstructionInput[] = [
     {
@@ -117,7 +113,7 @@ const DLMMClaimAllRewards = ({
       inputType: 'text',
     },
   ];
-
+  
   useEffect(() => {
     handleSetInstructions({ governedAccount: form.governedAccount?.governance, getInstruction }, index);
   }, [form, handleSetInstructions, index]);
