@@ -1,6 +1,3 @@
-
-// TODO Replace the hard-coded multiplier (1e6) with proper on-chain mint decimals.
-
 import React, { useContext, useEffect, useState } from 'react';
 import * as yup from 'yup';
 import { BN } from 'bn.js';
@@ -19,33 +16,18 @@ import { AssetAccount } from '@utils/uiTypes/assets';
 import useWalletOnePointOh from '@hooks/useWalletOnePointOh';
 import useGovernanceAssets from '@hooks/useGovernanceAssets';
 import DLMM from '@meteora-ag/dlmm';
-import { toStrategyParameters } from '@meteora-ag/dlmm/sdk/utils';
+import { StrategyParameters } from '@meteora-ag/dlmm';
+import { useConnection } from '@solana/wallet-adapter-react';
+import { MeteoraAddLiquidityForm } from '@utils/uiTypes/proposalCreationTypes';
 
-enum StrategyTypeEnum {
-  SpotBalanced = 0,
-  CurveBalanced = 1,
-  BidAskBalanced = 2,
-  SpotImBalanced = 3,
-  CurveImBalanced = 4,
-  BidAskImBalanced = 5,
-}
 const strategyOptions = [
-  { label: 'Spot Balanced', value: StrategyTypeEnum.SpotBalanced },
-  { label: 'Curve Balanced', value: StrategyTypeEnum.CurveBalanced },
-  { label: 'BidAsk Balanced', value: StrategyTypeEnum.BidAskBalanced },
-  { label: 'Spot Imbalanced', value: StrategyTypeEnum.SpotImBalanced },
-  { label: 'Curve Imbalanced', value: StrategyTypeEnum.CurveImBalanced },
-  { label: 'BidAsk Imbalanced', value: StrategyTypeEnum.BidAskImBalanced },
+  { label: 'Spot Balanced', value: 0 },
+  { label: 'Curve Balanced', value: 1 },
+  { label: 'BidAsk Balanced', value: 2 },
+  { label: 'Spot Imbalanced', value: 3 },
+  { label: 'Curve Imbalanced', value: 4 },
+  { label: 'BidAsk Imbalanced', value: 5 },
 ];
-
-interface AddLiquidityForm {
-  governedAccount: AssetAccount | undefined;
-  dlmmPoolAddress: string;
-  positionPubkey: string;
-  addAmountX: string;
-  addAmountY: string;
-  strategy: number;
-}
 
 const DLMMAddLiquidity = ({
   index,
@@ -57,78 +39,88 @@ const DLMMAddLiquidity = ({
   const { assetAccounts } = useGovernanceAssets();
   const wallet = useWalletOnePointOh();
   const connected = !!wallet?.connected;
-
-  const [form, setForm] = useState<AddLiquidityForm>({
+  const { connection } = useConnection();
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const { handleSetInstructions } = useContext(NewProposalContext);
+  const shouldBeGoverned = !!(index !== 0 && governance);
+  const [form, setForm] = useState<MeteoraAddLiquidityForm>({
     governedAccount: undefined,
     dlmmPoolAddress: '',
     positionPubkey: '',
     addAmountX: '0',
     addAmountY: '0',
-    strategy: StrategyTypeEnum.SpotBalanced,
+    strategy: 0,
   });
-  const [formErrors, setFormErrors] = useState<any>({});
-  const { handleSetInstructions } = useContext(NewProposalContext);
-  const shouldBeGoverned = !!(index !== 0 && governance);
 
   const schema = yup.object().shape({
     governedAccount: yup.object().nullable().required('Governed account is required'),
-    dlmmPoolAddress: yup
-      .string()
-      .required('DLMM pool address is required')
-      .test('is-pubkey', 'Invalid pool address', (val) => {
-        try {
-          new PublicKey(val || '');
-          return true;
-        } catch {
-          return false;
-        }
-      }),
-    positionPubkey: yup
-      .string()
-      .required('Existing position pubkey is required')
-      .test('is-pubkey', 'Invalid position pubkey', (val) => {
-        try {
-          new PublicKey(val || '');
-          return true;
-        } catch {
-          return false;
-        }
-      }),
-    addAmountX: yup.string().required('Amount X is required'),
-    addAmountY: yup.string().required('Amount Y is required'),
+    dlmmPoolAddress: yup.string().required('DLMM Pool Address is required'),
+    positionPubkey: yup.string().required('Position Pubkey is required'),
+    addAmountX: yup.number().required('Amount X is required').min(0, 'Amount X must be greater than or equal to 0'),
+    addAmountY: yup.number().required('Amount Y is required').min(0, 'Amount Y must be greater than or equal to 0'),
     strategy: yup.number().required('Strategy is required'),
   });
 
-  async function getInstruction(): Promise<UiInstruction> {
-    const isValid = await validateInstruction({ schema, form, setFormErrors });
-    if (!isValid || !form?.governedAccount?.governance?.account || !wallet?.publicKey) {
-      return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
+  async function getMintDecimals(mintAddress: string): Promise<number> {
+    console.log(`Fetching mint decimals for: ${mintAddress}`);
+    try {
+      const mintInfo = await connection.getParsedAccountInfo(new PublicKey(mintAddress));
+
+      if (mintInfo?.value && mintInfo.value.data && 'parsed' in mintInfo.value.data) {
+        console.log(`Mint info fetched successfully: ${JSON.stringify(mintInfo.value.data.parsed)}`);
+        return mintInfo.value.data.parsed?.info?.decimals ?? 6;
+      }
+      console.log('No parsed data found for mint. Defaulting to 6 decimals.');
+      return 6;
+    } catch (error) {
+      console.error('Error fetching mint decimals:', error);
+      return 6;
     }
-    if (!connected) {
-      return { serializedInstruction: '', isValid: false, governance: form.governedAccount?.governance };
+  }
+
+  async function getInstruction(): Promise<UiInstruction> {
+    console.log('Validating instruction and fetching data...');
+    const isValid = await validateInstruction({ schema, form, setFormErrors });
+    console.log(`Validation result: ${isValid}`);
+    if (!isValid || !form?.governedAccount?.governance?.account || !wallet?.publicKey || !connected) {
+      console.log('Validation failed or missing required data.');
+      return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
     }
 
     let serializedInstruction = '';
     let additionalSerializedInstructions: string[] = [];
+
     try {
+      console.log('Building liquidity instruction...');
       const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
-      const dlmmPool = await DLMM.create(wallet.connection, dlmmPoolPk);
+      const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
       await dlmmPool.refetchStates();
+      console.log(`DLMM Pool created and states refetched: ${dlmmPoolPk.toBase58()}`);
 
       const activeBin = await dlmmPool.getActiveBin();
       const minBinId = activeBin.binId - 10;
       const maxBinId = activeBin.binId + 10;
 
-      const xAmount = new BN(parseFloat(form.addAmountX) * Math.pow(10, DEFAULT_DECIMALS));
-      const yAmount = new BN(parseFloat(form.addAmountY) * Math.pow(10, DEFAULT_DECIMALS));
+      console.log(`Active bin ID: ${activeBin.binId}, minBinId: ${minBinId}, maxBinId: ${maxBinId}`);
+
+      const mintDecimals = await getMintDecimals(dlmmPoolPk.toBase58());
+      console.log(`Mint decimals: ${mintDecimals}`);
+
+      const xAmount = new BN(parseFloat(form.addAmountX) * Math.pow(10, mintDecimals));
+      const yAmount = new BN(parseFloat(form.addAmountY) * Math.pow(10, mintDecimals));
+
+      console.log(`Amounts calculated: xAmount = ${xAmount.toString()}, yAmount = ${yAmount.toString()}`);
+
       const positionPk = new PublicKey(form.positionPubkey);
-      const strategyParams = toStrategyParameters({
+
+      const strategyParams: StrategyParameters = {
         maxBinId,
         minBinId,
         strategyType: form.strategy,
         singleSidedX: false,
-      });
+      };
 
+      console.log('Calling DLMM addLiquidityByStrategy...');
       const txOrTxs = await dlmmPool.addLiquidityByStrategy({
         positionPubKey: positionPk,
         user: wallet.publicKey,
@@ -138,18 +130,31 @@ const DLMMAddLiquidity = ({
       });
 
       const txArray = Array.isArray(txOrTxs) ? txOrTxs : [txOrTxs];
-      if (txArray.length === 0) throw new Error('No transactions returned by addLiquidity.');
+      if (txArray.length === 0) {
+        console.error('No transactions returned by addLiquidity.');
+        throw new Error('No transactions returned by addLiquidity.');
+      }
+
+      console.log(`Transactions returned: ${txArray.length}`);
       const primaryInstructions = txArray[0].instructions;
-      if (primaryInstructions.length === 0) throw new Error('No instructions in the add liquidity transaction.');
+      if (primaryInstructions.length === 0) {
+        console.error('No instructions in the add liquidity transaction.');
+        throw new Error('No instructions in the add liquidity transaction.');
+      }
+
+      console.log('Instructions found, serializing...');
       serializedInstruction = serializeInstructionToBase64(primaryInstructions[0]);
+
       if (primaryInstructions.length > 1) {
-        additionalSerializedInstructions = primaryInstructions.slice(1).map(ix => serializeInstructionToBase64(ix));
+        additionalSerializedInstructions = primaryInstructions.slice(1).map((ix: any) => serializeInstructionToBase64(ix));
+        console.log('Additional instructions found and serialized.');
       }
     } catch (err: any) {
       console.error('Error building add liquidity instruction:', err);
       return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
     }
 
+    console.log('Instruction build complete.');
     return {
       serializedInstruction,
       additionalSerializedInstructions,
@@ -157,6 +162,16 @@ const DLMMAddLiquidity = ({
       governance: form?.governedAccount?.governance,
     };
   }
+
+  useEffect(() => {
+    if (form.governedAccount) {
+      console.log(`Setting instructions for governed account: ${form.governedAccount?.governance}`);
+      handleSetInstructions({
+        governedAccount: form.governedAccount?.governance,
+        getInstruction: () => getInstruction(),
+      }, index);
+    }
+  }, [form.governedAccount, handleSetInstructions, index]);
 
   const inputs: InstructionInput[] = [
     {
@@ -206,19 +221,13 @@ const DLMMAddLiquidity = ({
     },
   ];
 
-  useEffect(() => {
-    handleSetInstructions({ governedAccount: form.governedAccount?.governance, getInstruction }, index);
-  }, [form, handleSetInstructions, index]);
-
-  return (
-    <InstructionForm
-      outerForm={form}
-      setForm={setForm}
-      inputs={inputs}
-      setFormErrors={setFormErrors}
-      formErrors={formErrors}
-    />
-  );
+  return <InstructionForm 
+    outerForm={form} 
+    setForm={setForm} 
+    inputs={inputs} 
+    setFormErrors={setFormErrors} 
+    formErrors={formErrors} 
+  />;
 };
 
 export default DLMMAddLiquidity;
