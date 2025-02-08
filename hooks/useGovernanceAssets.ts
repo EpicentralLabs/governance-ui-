@@ -622,20 +622,28 @@ export default function useGovernanceAssets() {
       ██ ████ ██ █████      ██    █████   ██    ██ ██████  ███████ 
       ██  ██  ██ ██         ██    ██      ██    ██ ██   ██ ██   ██ 
       ██      ██ ███████    ██    ███████  ██████  ██   ██ ██   ██ 
-      */                                                       
-                                                             
+      */     
+                                                       
+      [Instructions.MeteoraAddLiquidity]: {
+        name: 'Add Liquidity',
+        packageId: PackageEnum.Meteora,
+      },   
+      [Instructions.MeteoraRemoveLiquidity]: {
+        name: 'Remove Liquidity',
+        packageId: PackageEnum.Meteora,
+      },        
+      [Instructions.MeteoraClaimRewards]: {
+        name: 'Claim Rewards',
+        packageId: PackageEnum.Meteora,
+      },                                   
       [Instructions.CreateMeteoraPool]: {
         name: 'Create Liquidity Pool',
         packageId: PackageEnum.Meteora,
       },
-      [Instructions.MeteoraAddLiquidity]: {
-        name: 'Add Liquidity',
+      [Instructions.MeteoraCreatePosition]: {
+        name: 'Create Position',
         packageId: PackageEnum.Meteora,
       },
-      // [Instructions.MeteoraRemoveLiquidity]: {
-      //   name: 'Remove Liquidity',
-      //   packageId: PackageEnum.Meteora,
-      // },
       // [Instructions.MeteoraSwap]: {
       //   name: 'Swap',
       //   packageId: PackageEnum.Meteora,

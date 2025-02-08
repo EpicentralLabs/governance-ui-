@@ -16,13 +16,8 @@ import { AssetAccount } from '@utils/uiTypes/assets'
 import useWalletOnePointOh from '@hooks/useWalletOnePointOh'
 import { useRealmQuery } from '@hooks/queries/realm'
 import useGovernanceAssets from '@hooks/useGovernanceAssets'
-import { useMeteoraClient } from '@hooks/useMeteoraClient'
-interface CreatePoolForm {
-  governedAccount: AssetAccount | undefined
-  tokenAMint: string
-  tokenBMint: string
-  fee: number
-}
+import { CreateMeteoraPoolForm } from '@utils/uiTypes/proposalCreationTypes'
+
 
 const CreateMeteoraPool = ({
   index,
@@ -34,14 +29,13 @@ const CreateMeteoraPool = ({
   const realm = useRealmQuery().data?.result
   const { assetAccounts } = useGovernanceAssets()
   const wallet = useWalletOnePointOh()
-  const { meteoraClient } = useMeteoraClient()
   const shouldBeGoverned = !!(index !== 0 && governance)
-  const [form, setForm] = useState<CreatePoolForm>()
+  const [form, setForm] = useState<CreateMeteoraPoolForm>()
   const [formErrors, setFormErrors] = useState({})
   const { handleSetInstructions } = useContext(NewProposalContext)
 
   const schema = yup.object().shape({
-    governedAccount: yup
+    governedTokenAccount: yup
       .object()
       .nullable()
       .required('Governed account is required'),
@@ -60,13 +54,13 @@ const CreateMeteoraPool = ({
 
     if (
       isValid &&
-      form?.governedAccount?.governance?.account &&
+      form?.governedTokenAccount?.governance?.account &&
       wallet?.publicKey &&
       meteoraClient
     ) {
       const createPoolIx = await meteoraClient.createPool({
-        tokenAMint: new PublicKey(form.tokenAMint),
-        tokenBMint: new PublicKey(form.tokenBMint),
+        tokenAMint: new PublicKey(form.baseToken),
+        tokenBMint: new PublicKey(form.quoteToken),
         authority: wallet.publicKey,
         fee: form.fee,
       })
@@ -77,7 +71,7 @@ const CreateMeteoraPool = ({
     return {
       serializedInstruction,
       isValid,
-      governance: form?.governedAccount?.governance,
+      governance: form?.governedTokenAccount?.governance,
     }
   }
 
@@ -119,7 +113,7 @@ const CreateMeteoraPool = ({
   useEffect(() => {
     handleSetInstructions(
       {
-        governedAccount: form?.governedAccount?.governance,
+        governedAccount: form?.governedTokenAccount?.governance,
         getInstruction,
       },
       index

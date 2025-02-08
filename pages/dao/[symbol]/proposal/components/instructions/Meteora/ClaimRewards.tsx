@@ -16,11 +16,9 @@ import { AssetAccount } from '@utils/uiTypes/assets';
 import useWalletOnePointOh from '@hooks/useWalletOnePointOh';
 import useGovernanceAssets from '@hooks/useGovernanceAssets';
 import DLMM from '@meteora-ag/dlmm';
+import { useConnection } from '@solana/wallet-adapter-react';
+import { MeteoraClaimRewardsForm } from '@utils/uiTypes/proposalCreationTypes';
 
-interface ClaimAllRewardsForm {
-  governedAccount: AssetAccount | undefined;
-  dlmmPoolAddress: string;
-}
 
 const DLMMClaimAllRewards = ({
   index,
@@ -31,11 +29,13 @@ const DLMMClaimAllRewards = ({
 }) => {
   const { assetAccounts } = useGovernanceAssets();
   const wallet = useWalletOnePointOh();
+  const { connection } = useConnection();
   const connected = !!wallet?.connected;
 
-  const [form, setForm] = useState<ClaimAllRewardsForm>({
+  const [form, setForm] = useState<MeteoraClaimRewardsForm>({
     governedAccount: undefined,
     dlmmPoolAddress: '',
+    rewards: '',
   });
   const [formErrors, setFormErrors] = useState<any>({});
   const { handleSetInstructions } = useContext(NewProposalContext);
@@ -66,12 +66,12 @@ const DLMMClaimAllRewards = ({
     }
 
     let serializedInstruction = '';
+    const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
     try {
-      const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
-      const dlmmPool = await DLMM.create(wallet.connection, dlmmPoolPk);
+      const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
       await dlmmPool.refetchStates();
 
-      const claimTxs = await dlmmPool.claimAllRewards(wallet.publicKey);
+      const claimTxs = await dlmmPool.claimAllRewards({ owner: wallet.publicKey, positions: [] });
       if (claimTxs.length === 0) {
         throw new Error('No transactions returned by claimAllRewards');
       }
@@ -106,6 +106,13 @@ const DLMMClaimAllRewards = ({
       label: 'DLMM Pool Address',
       initialValue: form.dlmmPoolAddress,
       name: 'dlmmPoolAddress',
+      type: InstructionInputType.INPUT,
+      inputType: 'text',
+    },
+    {
+      label: 'Rewards',
+      initialValue: form.rewards,
+      name: 'rewards',
       type: InstructionInputType.INPUT,
       inputType: 'text',
     },

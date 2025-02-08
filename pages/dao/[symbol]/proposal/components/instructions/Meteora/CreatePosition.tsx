@@ -1,55 +1,30 @@
-
- // TODO Replace the hard-coded decimal multiplier (1e6) with on-chain mint decimals
- // TODO verify that PDA/signers are set appropriately for your production environment.
-
 import React, { useContext, useEffect, useState } from 'react';
 import * as yup from 'yup';
 import { BN } from 'bn.js';
-import {
-  Governance,
-  ProgramAccount,
-  serializeInstructionToBase64,
-} from '@solana/spl-governance';
+import { ProgramAccount, serializeInstructionToBase64, Governance } from '@solana/spl-governance';
 import { validateInstruction } from '@utils/instructionTools';
 import { UiInstruction } from '@utils/uiTypes/proposalCreationTypes';
 import { PublicKey } from '@solana/web3.js';
 import { NewProposalContext } from '../../../new';
 import InstructionForm, { InstructionInput } from '../FormCreator';
 import { InstructionInputType } from '../inputInstructionType';
-import { AssetAccount } from '@utils/uiTypes/assets';
 import useWalletOnePointOh from '@hooks/useWalletOnePointOh';
 import useGovernanceAssets from '@hooks/useGovernanceAssets';
 import DLMM from '@meteora-ag/dlmm';
-// Import the strategy parameters helper (update path as needed)
-import { toStrategyParameters } from '@meteora-ag/dlmm/sdk/utils';
+import { toStrategyParameters } from '@meteora-ag/dlmm';
+import { useConnection } from '@solana/wallet-adapter-react';
+import { MeteoraCreatePositionForm } from '@utils/uiTypes/proposalCreationTypes';
+import { getMintDecimals } from './GetMintDecimals';
+import { StrategyParameters } from '@meteora-ag/dlmm';
 
-// For production, replace this constant with the actual mint decimals (maybe fetch via tryGetMint)
-const DEFAULT_DECIMALS = 6;
-
-export enum StrategyTypeEnum {
-  SpotBalanced = 0,
-  CurveBalanced = 1,
-  BidAskBalanced = 2,
-  SpotImBalanced = 3,
-  CurveImBalanced = 4,
-  BidAskImBalanced = 5,
-}
 const strategyOptions = [
-  { label: 'Spot Balanced', value: StrategyTypeEnum.SpotBalanced },
-  { label: 'Curve Balanced', value: StrategyTypeEnum.CurveBalanced },
-  { label: 'BidAsk Balanced', value: StrategyTypeEnum.BidAskBalanced },
-  { label: 'Spot Imbalanced', value: StrategyTypeEnum.SpotImBalanced },
-  { label: 'Curve Imbalanced', value: StrategyTypeEnum.CurveImBalanced },
-  { label: 'BidAsk Imbalanced', value: StrategyTypeEnum.BidAskImBalanced },
+  { name: 'Spot Balanced', value: 0 },
+  { name: 'Curve Balanced', value: 1 },
+  { name: 'BidAsk Balanced', value: 2 },
+  { name: 'Spot Imbalanced', value: 3 },
+  { name: 'Curve Imbalanced', value: 4 },
+  { name: 'BidAsk Imbalanced', value: 5 },
 ];
-
-interface CreatePositionForm {
-  governedAccount: AssetAccount | undefined;
-  dlmmPoolAddress: string;
-  amountX: string;
-  amountY: string;
-  strategy: number;
-}
 
 const DLMMCreatePosition = ({
   index,
@@ -61,90 +36,84 @@ const DLMMCreatePosition = ({
   const { assetAccounts } = useGovernanceAssets();
   const wallet = useWalletOnePointOh();
   const connected = !!wallet?.connected;
-
-  const [form, setForm] = useState<CreatePositionForm>({
-    governedAccount: undefined,
-    dlmmPoolAddress: '',
-    amountX: '0',
-    amountY: '0',
-    strategy: StrategyTypeEnum.SpotBalanced,
-  });
-  const [formErrors, setFormErrors] = useState<any>({});
+  const { connection } = useConnection();
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const { handleSetInstructions } = useContext(NewProposalContext);
   const shouldBeGoverned = !!(index !== 0 && governance);
+  const [form, setForm] = useState<MeteoraCreatePositionForm>({
+    governedAccount: undefined,
+    dlmmPoolAddress: '',
+    positionPubkey: '',
+    quoteToken: '0',
+    baseToken: '0',
+    strategy: 0,
+  });
 
   const schema = yup.object().shape({
     governedAccount: yup.object().nullable().required('Governed account is required'),
-    dlmmPoolAddress: yup
-      .string()
-      .required('DLMM pool address is required')
-      .test('is-pubkey', 'Invalid pool address', (val) => {
-        try {
-          new PublicKey(val || '');
-          return true;
-        } catch {
-          return false;
-        }
-      }),
-    amountX: yup.string().required('Amount X is required'),
-    amountY: yup.string().required('Amount Y is required'),
+    dlmmPoolAddress: yup.string().required('DLMM Pool Address is required'),
+    positionPubkey: yup.string().required('Position Pubkey is required'),
+    quoteToken: yup.number().required('quoteToken is required').min(0, 'quoteToken must be greater than or equal to 0'),
+    baseToken: yup.number().required('baseToken is required').min(0, 'baseToken must be greater than or equal to 0'),
     strategy: yup.number().required('Strategy is required'),
   });
 
   async function getInstruction(): Promise<UiInstruction> {
+    console.log('Validating instruction and fetching data...');
     const isValid = await validateInstruction({ schema, form, setFormErrors });
-    if (!isValid || !form?.governedAccount?.governance?.account || !wallet?.publicKey) {
+    console.log(`Validation result: ${isValid}`);
+    if (!isValid || !form?.governedAccount?.governance?.account || !wallet?.publicKey || !connected) {
+      console.log('Validation failed or missing required data.');
       return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
-    }
-    if (!connected) {
-      return { serializedInstruction: '', isValid: false, governance: form.governedAccount?.governance };
     }
 
     let serializedInstruction = '';
     let additionalSerializedInstructions: string[] = [];
-    try {
-      // Instantiate DLMM instance
-      const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
-      const dlmmPool = await DLMM.create(wallet.connection, dlmmPoolPk);
-      await dlmmPool.refetchStates();
 
-      // Get active bin and define bin range (±10 bins)
+    try {
+      console.log('Building liquidity instruction...');
+      const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
+      const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
+      await dlmmPool.refetchStates();
+      console.log(`DLMM Pool created and states refetched: ${dlmmPoolPk.toBase58()}`);
+
       const activeBin = await dlmmPool.getActiveBin();
       const minBinId = activeBin.binId - 10;
       const maxBinId = activeBin.binId + 10;
 
-      // Convert input amounts using DEFAULT_DECIMALS (replace with on-chain decimals)
-      const totalXAmount = new BN(parseFloat(form.amountX) * Math.pow(10, DEFAULT_DECIMALS));
-      const totalYAmount = new BN(parseFloat(form.amountY) * Math.pow(10, DEFAULT_DECIMALS));
+      console.log(`Active bin ID: ${activeBin.binId}, minBinId: ${minBinId}, maxBinId: ${maxBinId}`);
 
-      // Convert strategy selection to parameters
-      const strategyParams = toStrategyParameters({
-        maxBinId,
+      const mintDecimals = await getMintDecimals(dlmmPoolPk.toBase58());
+      console.log(`Mint decimals: ${mintDecimals}`);
+
+      const xAmount = new BN(parseFloat(form.quoteToken) * Math.pow(10, mintDecimals));
+      const yAmount = new BN(parseFloat(form.baseToken) * Math.pow(10, mintDecimals));
+
+      console.log(`Amounts calculated: xAmount = ${xAmount.toString()}, yAmount = ${yAmount.toString()}`);
+
+      const positionPk = new PublicKey(form.positionPubkey);
+
+      const strategyParams: StrategyParameters = {
         minBinId,
+        maxBinId,
         strategyType: form.strategy,
         singleSidedX: false,
-      });
-
-      // Generate a new position public key (in production, consider a PDA)
-      const newPositionPk = PublicKey.unique();
-
-      const txOrTxs = await dlmmPool.initializePositionAndAddLiquidityByStrategy({
-        positionPubKey: newPositionPk,
+      };
+      
+      const txOrTxs = await dlmmPool.createEmptyPosition({
+        positionPubKey: positionPk,
         user: wallet.publicKey,
-        totalXAmount,
-        totalYAmount,
-        strategy: strategyParams,
+        ...strategyParams,
       });
-
+      
       const txArray = Array.isArray(txOrTxs) ? txOrTxs : [txOrTxs];
       if (txArray.length === 0) throw new Error('No transactions returned by create position.');
       const primaryInstructions = txArray[0].instructions;
       if (primaryInstructions.length === 0) throw new Error('No instructions in the create position transaction.');
 
-      // Use the first instruction as primary; if additional exist, add them.
       serializedInstruction = serializeInstructionToBase64(primaryInstructions[0]);
       if (primaryInstructions.length > 1) {
-        additionalSerializedInstructions = primaryInstructions.slice(1).map(ix => serializeInstructionToBase64(ix));
+        additionalSerializedInstructions = primaryInstructions.slice(1).map((ix: import('@solana/web3.js').TransactionInstruction) => serializeInstructionToBase64(ix));
       }
     } catch (err: any) {
       console.error('Error building create position instruction:', err);
@@ -177,16 +146,16 @@ const DLMMCreatePosition = ({
       inputType: 'text',
     },
     {
-      label: 'Amount X',
-      initialValue: form.amountX,
-      name: 'amountX',
+      label: 'Quote Token',
+      initialValue: form.quoteToken,
+      name: 'quoteToken',
       type: InstructionInputType.INPUT,
       inputType: 'number',
     },
     {
-      label: 'Amount Y',
-      initialValue: form.amountY,
-      name: 'amountY',
+      label: 'Base Token',
+      initialValue: form.baseToken,
+      name: 'baseToken',
       type: InstructionInputType.INPUT,
       inputType: 'number',
     },

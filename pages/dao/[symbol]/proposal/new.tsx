@@ -150,8 +150,11 @@ import PlaceLimitOrder from './components/instructions/Manifest/PlaceLimitOrder'
 import CancelLimitOrder from './components/instructions/Manifest/CancelLimitOrder'
 import WithdrawFees from './components/instructions/Token2022/WithdrawFees'
 import MeteoraAddLiquidity from './components/instructions/Meteora/AddLiquidity'
+import MeteoraClaimRewards from './components/instructions/Meteora/ClaimRewards'
 import MeteoraRemoveLiquidity from './components/instructions/Meteora/RemoveLiquidity'
 import MeteoraCreatePool from './components/instructions/Meteora/CreatePool'
+import MeteoraCreatePosition from './components/instructions/Meteora/CreatePosition'
+
 
 const TITLE_LENGTH_LIMIT = 130
 // the true length limit is either at the tx size level, and maybe also the total account size level (I can't remember)
@@ -572,6 +575,12 @@ const New = () => {
       [Instructions.SerumInitUser]: InitUser,
       [Instructions.TokenWithdrawFees]: WithdrawFees,
       [Instructions.MeteoraAddLiquidity]: MeteoraAddLiquidity,
+      [Instructions.MeteoraClaimRewards]: MeteoraClaimRewards,
+      [Instructions.MeteoraRemoveLiquidity]: MeteoraRemoveLiquidity,
+      [Instructions.MeteoraCreatePool]: MeteoraCreatePool,
+      [Instructions.MeteoraCreatePosition]: MeteoraCreatePosition,
+
+
     
       [Instructions.SerumGrantLockedSRM]: {
         componentBuilderFunction: ({ index, governance }) => (

@@ -17,13 +17,8 @@ import { AssetAccount } from '@utils/uiTypes/assets';
 import useWalletOnePointOh from '@hooks/useWalletOnePointOh';
 import useGovernanceAssets from '@hooks/useGovernanceAssets';
 import DLMM from '@meteora-ag/dlmm';
-
-interface RemoveLiquidityForm {
-  governedAccount: AssetAccount | undefined;
-  dlmmPoolAddress: string;
-  positionPubkey: string;
-  removeAll: boolean;
-}
+import { useConnection } from '@solana/wallet-adapter-react';
+import { MeteoraRemoveLiquidityForm } from '@utils/uiTypes/proposalCreationTypes';
 
 const DLMMRemoveLiquidity = ({
   index,
@@ -35,8 +30,9 @@ const DLMMRemoveLiquidity = ({
   const { assetAccounts } = useGovernanceAssets();
   const wallet = useWalletOnePointOh();
   const connected = !!wallet?.connected;
+  const { connection } = useConnection();
 
-  const [form, setForm] = useState<RemoveLiquidityForm>({
+  const [form, setForm] = useState<MeteoraRemoveLiquidityForm>({
     governedAccount: undefined,
     dlmmPoolAddress: '',
     positionPubkey: '',
@@ -84,7 +80,7 @@ const DLMMRemoveLiquidity = ({
     let serializedInstruction = '';
     try {
       const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
-      const dlmmPool = await DLMM.create(wallet.connection, dlmmPoolPk);
+      const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
       await dlmmPool.refetchStates();
 
       const positionPk = new PublicKey(form.positionPubkey);
@@ -101,7 +97,7 @@ const DLMMRemoveLiquidity = ({
         position: positionPk,
         user: wallet.publicKey,
         binIds,
-        liquiditiesBpsToRemove: bpsToRemove,
+        bps: bpsToRemove[0],
         shouldClaimAndClose: form.removeAll,
       });
       const txs = Array.isArray(removeTxOrTxs) ? removeTxOrTxs : [removeTxOrTxs];

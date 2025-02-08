@@ -19,7 +19,7 @@ import DLMM from '@meteora-ag/dlmm';
 import { StrategyParameters } from '@meteora-ag/dlmm';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { MeteoraAddLiquidityForm } from '@utils/uiTypes/proposalCreationTypes';
-
+import { getMintDecimals } from './GetMintDecimals';
 
 const strategyOptions = [
   {
@@ -47,7 +47,6 @@ const strategyOptions = [
     value: 5,
   },]
  
-console.log(strategyOptions)
 
 const DLMMAddLiquidity = ({
   index,
@@ -72,7 +71,6 @@ const DLMMAddLiquidity = ({
     strategy: 0,
   });
 
-  console.log(JSON.stringify(form, null, 2));
 
   const schema = yup.object().shape({
     governedAccount: yup.object().nullable().required('Governed account is required'),
@@ -83,22 +81,6 @@ const DLMMAddLiquidity = ({
     strategy: yup.number().required('Strategy is required'),
   });
 
-  async function getMintDecimals(mintAddress: string): Promise<number> {
-    console.log(`Fetching mint decimals for: ${mintAddress}`);
-    try {
-      const mintInfo = await connection.getParsedAccountInfo(new PublicKey(mintAddress));
-
-      if (mintInfo?.value && mintInfo.value.data && 'parsed' in mintInfo.value.data) {
-        console.log(`Mint info fetched successfully: ${JSON.stringify(mintInfo.value.data.parsed)}`);
-        return mintInfo.value.data.parsed?.info?.decimals ?? 6;
-      }
-      console.log('No parsed data found for mint. Defaulting to 6 decimals.');
-      return 6;
-    } catch (error) {
-      console.error('Error fetching mint decimals:', error);
-      return 6;
-    }
-  }
 
   async function getInstruction(): Promise<UiInstruction> {
     console.log('Validating instruction and fetching data...');
