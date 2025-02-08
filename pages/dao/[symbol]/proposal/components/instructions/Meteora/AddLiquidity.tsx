@@ -110,28 +110,29 @@ const DLMMAddLiquidity = ({
       const mintDecimals = await getMintDecimals(dlmmPoolPk.toBase58());
       console.log(`Mint decimals: ${mintDecimals}`);
 
-      const xAmount = new BN(parseFloat(form.quoteToken) * Math.pow(10, mintDecimals));
-      const yAmount = new BN(parseFloat(form.baseToken) * Math.pow(10, mintDecimals));
+      const quoteTokenAmount = new BN(parseFloat(form.quoteToken) * Math.pow(10, mintDecimals));
+      const baseTokenAmount = new BN(parseFloat(form.baseToken) * Math.pow(10, mintDecimals));
 
-      console.log(`Amounts calculated: xAmount = ${xAmount.toString()}, yAmount = ${yAmount.toString()}`);
+      console.log(`Amounts calculated: quoteTokenAmount = ${quoteTokenAmount.toString()}, baseTokenAmount = ${baseTokenAmount.toString()}`);
 
       const positionPk = new PublicKey(form.positionPubkey);
 
       const strategyParams: StrategyParameters = {
-        maxBinId,
-        minBinId,
-        strategyType: form.strategy,
-        singleSidedX: false,
-      };
+          maxBinId,
+          minBinId,
+          strategyType: form.strategy,
+          singleSidedX: false,
+        };
 
-      console.log('Calling DLMM addLiquidityByStrategy...');
-      const txOrTxs = await dlmmPool.addLiquidityByStrategy({
+    console.log('Calling DLMM addLiquidityByStrategy...');
+    const txOrTxs = await dlmmPool.addLiquidityByStrategy({
         positionPubKey: positionPk,
         user: wallet.publicKey,
-        totalXAmount: xAmount,
-        totalYAmount: yAmount,
+        totalXAmount: quoteTokenAmount,
+        totalYAmount: baseTokenAmount,
         strategy: strategyParams,
       });
+
 
       const txArray = Array.isArray(txOrTxs) ? txOrTxs : [txOrTxs];
       if (txArray.length === 0) {

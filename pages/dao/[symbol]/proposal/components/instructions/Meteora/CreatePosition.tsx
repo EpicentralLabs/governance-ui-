@@ -86,11 +86,11 @@ const DLMMCreatePosition = ({
       const mintDecimals = await getMintDecimals(dlmmPoolPk.toBase58());
       console.log(`Mint decimals: ${mintDecimals}`);
 
-      const xAmount = new BN(parseFloat(form.quoteToken) * Math.pow(10, mintDecimals));
-      const yAmount = new BN(parseFloat(form.baseToken) * Math.pow(10, mintDecimals));
-
-      console.log(`Amounts calculated: xAmount = ${xAmount.toString()}, yAmount = ${yAmount.toString()}`);
-
+      const quoteTokenAmount = new BN(parseFloat(form.quoteToken) * Math.pow(10, mintDecimals));
+      const baseTokenAmount = new BN(parseFloat(form.baseToken) * Math.pow(10, mintDecimals));
+   
+      console.log(`Amounts calculated: quoteTokenAmount = ${quoteTokenAmount.toString()}, baseTokenAmount = ${baseTokenAmount.toString()}`);
+   
       const positionPk = new PublicKey(form.positionPubkey);
 
       const strategyParams: StrategyParameters = {
