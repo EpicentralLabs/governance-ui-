@@ -13,7 +13,10 @@ import useGovernanceAssets from '@hooks/useGovernanceAssets';
 import DLMM from '@meteora-ag/dlmm';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { getMintDecimals } from './GetMintDecimals';
-
+/**
+ * @deprecated Use `CreateLiquidityPool` instead.
+ * 
+ */
 const CreateMeteoraPool = ({
   index,
   governance,
