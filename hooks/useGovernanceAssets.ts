@@ -628,10 +628,10 @@ export default function useGovernanceAssets() {
         name: 'Create Liquidity Pool',
         packageId: PackageEnum.Meteora,
       },
-      // [Instructions.MeteoraAddLiquidity]: {
-      //   name: 'Add Liquidity',
-      //   packageId: PackageEnum.Meteora,
-      // },
+      [Instructions.MeteoraAddLiquidity]: {
+        name: 'Add Liquidity',
+        packageId: PackageEnum.Meteora,
+      },
       // [Instructions.MeteoraRemoveLiquidity]: {
       //   name: 'Remove Liquidity',
       //   packageId: PackageEnum.Meteora,

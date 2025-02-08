@@ -149,6 +149,9 @@ import PythUpdatePoolAuthority from './components/instructions/Pyth/PythUpdatePo
 import PlaceLimitOrder from './components/instructions/Manifest/PlaceLimitOrder'
 import CancelLimitOrder from './components/instructions/Manifest/CancelLimitOrder'
 import WithdrawFees from './components/instructions/Token2022/WithdrawFees'
+import MeteoraAddLiquidity from './components/instructions/Meteora/AddLiquidity'
+import MeteoraRemoveLiquidity from './components/instructions/Meteora/RemoveLiquidity'
+import MeteoraCreatePool from './components/instructions/Meteora/CreatePool'
 
 const TITLE_LENGTH_LIMIT = 130
 // the true length limit is either at the tx size level, and maybe also the total account size level (I can't remember)
@@ -568,6 +571,8 @@ const New = () => {
       [Instructions.TransferDomainName]: TransferDomainName,
       [Instructions.SerumInitUser]: InitUser,
       [Instructions.TokenWithdrawFees]: WithdrawFees,
+      [Instructions.MeteoraAddLiquidity]: MeteoraAddLiquidity,
+    
       [Instructions.SerumGrantLockedSRM]: {
         componentBuilderFunction: ({ index, governance }) => (
           <GrantForm

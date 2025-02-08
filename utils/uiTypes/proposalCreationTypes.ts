@@ -400,6 +400,7 @@ export enum Instructions {
   SymmetryDeposit,
   SymmetryWithdraw,
   CreateMeteoraPool,
+  MeteoraAddLiquidity,
 }
 
 export interface ComponentInstructionData {
@@ -622,5 +623,14 @@ export interface CreateMeteoraPoolForm {
   fee: number; 
   binStep: string; 
   initialPrice: string;  
+}
+
+export interface MeteoraAddLiquidityForm {
+  governedAccount: AssetAccount | undefined;
+  dlmmPoolAddress: string;
+  positionPubkey: string;
+  addAmountX: string;
+  addAmountY: string;
+  strategy: number;
 }
 
