@@ -152,7 +152,7 @@ import WithdrawFees from './components/instructions/Token2022/WithdrawFees'
 import MeteoraAddLiquidity from './components/instructions/Meteora/AddLiquidity'
 import MeteoraClaimRewards from './components/instructions/Meteora/ClaimRewards'
 import MeteoraRemoveLiquidity from './components/instructions/Meteora/RemoveLiquidity'
-import MeteoraCreatePool from './components/instructions/Meteora/CreatePool'
+import MeteroaCreateLiquidityPool from './components/instructions/Meteora/CreateLiquidityPool'
 import MeteoraCreatePosition from './components/instructions/Meteora/CreatePosition'
 
 
@@ -577,7 +577,7 @@ const New = () => {
       [Instructions.MeteoraAddLiquidity]: MeteoraAddLiquidity,
       [Instructions.MeteoraClaimRewards]: MeteoraClaimRewards,
       [Instructions.MeteoraRemoveLiquidity]: MeteoraRemoveLiquidity,
-      [Instructions.MeteoraCreatePool]: MeteoraCreatePool,
+      [Instructions.MeteroaCreateLiquidityPool]: MeteroaCreateLiquidityPool,
       [Instructions.MeteoraCreatePosition]: MeteoraCreatePosition,
 
 

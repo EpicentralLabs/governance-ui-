@@ -636,7 +636,7 @@ export default function useGovernanceAssets() {
         name: 'Claim Rewards',
         packageId: PackageEnum.Meteora,
       },                                   
-      [Instructions.CreateMeteoraPool]: {
+      [Instructions.MeteroaCreateLiquidityPool]: {
         name: 'Create Liquidity Pool',
         packageId: PackageEnum.Meteora,
       },

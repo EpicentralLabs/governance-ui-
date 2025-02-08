@@ -403,7 +403,7 @@ export enum Instructions {
   MeteoraAddLiquidity,
   MeteoraRemoveLiquidity,
   MeteoraClaimRewards,
-  MeteoraCreatePool,
+  MeteroaCreateLiquidityPool,
   MeteoraCreatePosition,
 }
 
@@ -619,15 +619,19 @@ export interface SymmetryWithdrawForm {
 }
 
 export interface CreateMeteoraPoolForm {
-  governedTokenAccount?: AssetAccount; 
-  baseToken: string;  
-  quoteToken: string; 
-  authority: string;  
-  baseFee: string;  
-  fee: number; 
-  binStep: string; 
-  initialPrice: string;  
+  poolType: number;
+  baseTokenMint: string;
+  quoteTokenMint: string;
+  fee: number;
+  governedAccount?: string;
+  governedTokenAccount?: {
+    governance: {
+      account: string;
+    };
+  };
 }
+
+
 
 export interface MeteoraAddLiquidityForm {
   governedAccount: AssetAccount | undefined;
