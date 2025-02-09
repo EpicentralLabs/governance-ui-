@@ -18,15 +18,8 @@ import { getMintDecimals } from './GetMintDecimals';
 import { StrategyParameters } from '@meteora-ag/dlmm';
 
 /**
- * Component for creating a DLMM position within a decentralized liquidity market management system (DLMM).
- * It allows users to input relevant information such as DLMM pool address, position public key,
- * quote token, base token amounts, and strategy for the position creation.
+ * @deprecated Use MeteroaCreateLiquidityPool instead!
  * 
- * @param {Object} props - The component props
- * @param {number} props.index - The index of the current proposal
- * @param {ProgramAccount<Governance> | null} props.governance - The governance account for the proposal (if applicable)
- * 
- * @returns {JSX.Element} The DLMMCreatePosition form for creating a new liquidity position.
  */
 const DLMMCreatePosition = ({
   index,
