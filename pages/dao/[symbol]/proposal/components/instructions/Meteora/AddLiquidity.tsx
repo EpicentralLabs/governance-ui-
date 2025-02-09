@@ -21,46 +21,29 @@ import { useConnection } from '@solana/wallet-adapter-react';
 import { MeteoraAddLiquidityForm } from '@utils/uiTypes/proposalCreationTypes';
 import { getMintDecimals } from './GetMintDecimals';
 
+/**
+ * Available liquidity strategy options for DLMM pools.
+ */
 const strategyOptions = [
-  {
-    name: 'Spot Balanced',
-    value: 6,
-  },
-  {
-    name: 'Curve Balanced',
-    value: 7,
-  },
-  {
-    name: 'BidAsk Balanced',
-    value: 8,
-  },
-  {
-    name: 'Spot Imbalanced',
-    value: 3,
-  },
-  {
-    name: 'Curve Imbalanced',
-    value: 4,
-  },
-  {
-    name: 'BidAsk Imbalanced',
-    value: 5,
-  },
-  {
-    name: 'Spot OneSide',
-    value: 0,
-  },
-  {
-    name: 'Curve OneSide',
-    value: 1,
-  },
-  {
-    name: 'BidAsk OneSide',
-    value: 2,
-  },
-]
- 
+  { name: 'Spot Balanced', value: 6 },
+  { name: 'Curve Balanced', value: 7 },
+  { name: 'BidAsk Balanced', value: 8 },
+  { name: 'Spot Imbalanced', value: 3 },
+  { name: 'Curve Imbalanced', value: 4 },
+  { name: 'BidAsk Imbalanced', value: 5 },
+  { name: 'Spot OneSide', value: 0 },
+  { name: 'Curve OneSide', value: 1 },
+  { name: 'BidAsk OneSide', value: 2 },
+];
 
+/**
+ * A component that handles the liquidity addition to a DLMM pool in a governance context.
+ * It validates form data and constructs instructions for adding liquidity by strategy to the pool.
+ *
+ * @param index The index of the liquidity pool in the current proposal.
+ * @param governance The governance account associated with the current proposal.
+ * @returns JSX element to render the instruction form.
+ */
 const DLMMAddLiquidity = ({
   index,
   governance,
@@ -68,13 +51,18 @@ const DLMMAddLiquidity = ({
   index: number;
   governance: ProgramAccount<Governance> | null;
 }) => {
+  // Fetch governance assets and wallet details
   const { assetAccounts } = useGovernanceAssets();
   const wallet = useWalletOnePointOh();
   const connected = !!wallet?.connected;
   const { connection } = useConnection();
+
+  // State for form errors and the form values themselves
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const { handleSetInstructions } = useContext(NewProposalContext);
   const shouldBeGoverned = !!(index !== 0 && governance);
+
+  // Form state initialization
   const [form, setForm] = useState<MeteoraAddLiquidityForm>({
     governedAccount: undefined,
     dlmmPoolAddress: '',
@@ -84,7 +72,7 @@ const DLMMAddLiquidity = ({
     strategy: 0,
   });
 
-
+  // Yup validation schema
   const schema = yup.object().shape({
     governedAccount: yup.object().nullable().required('Governed account is required'),
     dlmmPoolAddress: yup.string().required('DLMM Pool Address is required'),
@@ -94,11 +82,17 @@ const DLMMAddLiquidity = ({
     strategy: yup.number().required('Strategy is required'),
   });
 
-
+  /**
+   * Constructs and validates the instruction to add liquidity to the DLMM pool.
+   *
+   * @returns A promise containing the serialized instruction and other transaction data.
+   */
   async function getInstruction(): Promise<UiInstruction> {
     console.log('Validating instruction and fetching data...');
     const isValid = await validateInstruction({ schema, form, setFormErrors });
     console.log(`Validation result: ${isValid}`);
+
+    // Early exit if validation fails or if required data is missing
     if (!isValid || !form?.governedAccount?.governance?.account || !wallet?.publicKey || !connected) {
       console.log('Validation failed or missing required data.');
       return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
@@ -114,12 +108,14 @@ const DLMMAddLiquidity = ({
       await dlmmPool.refetchStates();
       console.log(`DLMM Pool created and states refetched: ${dlmmPoolPk.toBase58()}`);
 
+      // Fetch active bin data for price and liquidity range
       const activeBin = await dlmmPool.getActiveBin();
       const minBinId = activeBin.binId - 10;
       const maxBinId = activeBin.binId + 10;
 
       console.log(`Active bin ID: ${activeBin.binId}, minBinId: ${minBinId}, maxBinId: ${maxBinId}`);
 
+      // Get mint decimals to scale token amounts correctly
       const mintDecimals = await getMintDecimals(dlmmPoolPk.toBase58());
       console.log(`Mint decimals: ${mintDecimals}`);
 
@@ -130,22 +126,22 @@ const DLMMAddLiquidity = ({
 
       const positionPk = new PublicKey(form.positionPubkey);
 
+      // Define strategy parameters based on the selected strategy
       const strategyParams: StrategyParameters = {
-          maxBinId,
-          minBinId,
-          strategyType: form.strategy as unknown as StrategyType,
-          singleSidedX: false,
-        };
+        maxBinId,
+        minBinId,
+        strategyType: form.strategy as unknown as StrategyType,
+        singleSidedX: false,
+      };
 
-    console.log('Calling DLMM addLiquidityByStrategy...');
-    const txOrTxs = await dlmmPool.addLiquidityByStrategy({
+      console.log('Calling DLMM addLiquidityByStrategy...');
+      const txOrTxs = await dlmmPool.addLiquidityByStrategy({
         positionPubKey: positionPk,
         user: wallet.publicKey,
         totalXAmount: quoteTokenAmount,
         totalYAmount: baseTokenAmount,
         strategy: strategyParams,
       });
-
 
       const txArray = Array.isArray(txOrTxs) ? txOrTxs : [txOrTxs];
       if (txArray.length === 0) {
@@ -181,6 +177,7 @@ const DLMMAddLiquidity = ({
     };
   }
 
+  // Handle setting the instructions when form state changes
   useEffect(() => {
     if (form.governedAccount) {
       console.log(`Setting instructions for governed account: ${JSON.stringify(form.governedAccount?.governance)}`);
@@ -191,6 +188,7 @@ const DLMMAddLiquidity = ({
     }
   }, [form.governedAccount, handleSetInstructions, index]);
 
+  // Define input fields for the form
   const inputs: InstructionInput[] = [
     {
       label: 'Governance',
