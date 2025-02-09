@@ -16,7 +16,7 @@ import { AssetAccount } from '@utils/uiTypes/assets';
 import useWalletOnePointOh from '@hooks/useWalletOnePointOh';
 import useGovernanceAssets from '@hooks/useGovernanceAssets';
 import DLMM from '@meteora-ag/dlmm';
-import { StrategyParameters } from '@meteora-ag/dlmm';
+import { StrategyParameters, StrategyType } from '@meteora-ag/dlmm';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { MeteoraAddLiquidityForm } from '@utils/uiTypes/proposalCreationTypes';
 import { getMintDecimals } from './GetMintDecimals';
@@ -24,15 +24,15 @@ import { getMintDecimals } from './GetMintDecimals';
 const strategyOptions = [
   {
     name: 'Spot Balanced',
-    value: 0,
+    value: 6,
   },
   {
     name: 'Curve Balanced',
-    value: 1,
+    value: 7,
   },
   {
     name: 'BidAsk Balanced',
-    value: 2,
+    value: 8,
   },
   {
     name: 'Spot Imbalanced',
@@ -45,7 +45,20 @@ const strategyOptions = [
   {
     name: 'BidAsk Imbalanced',
     value: 5,
-  },]
+  },
+  {
+    name: 'Spot OneSide',
+    value: 0,
+  },
+  {
+    name: 'Curve OneSide',
+    value: 1,
+  },
+  {
+    name: 'BidAsk OneSide',
+    value: 2,
+  },
+]
  
 
 const DLMMAddLiquidity = ({
@@ -120,7 +133,7 @@ const DLMMAddLiquidity = ({
       const strategyParams: StrategyParameters = {
           maxBinId,
           minBinId,
-          strategyType: form.strategy,
+          strategyType: form.strategy as unknown as StrategyType,
           singleSidedX: false,
         };
 
