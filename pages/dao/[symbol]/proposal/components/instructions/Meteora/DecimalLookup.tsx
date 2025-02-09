@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import { useConnection } from '@solana/wallet-adapter-react';
@@ -6,14 +5,27 @@ import Button from '@components/Button';
 // Import MintLayout to decode mint accounts from @solana/spl-token
 import { MintLayout } from '@solana/spl-token';
 
+/**
+ * A React component to look up the decimals for a specific token mint address.
+ * The component allows the user to input a token mint address, fetches the account info from the Solana blockchain,
+ * decodes it using the `MintLayout` from `@solana/spl-token`, and displays the token's decimal precision.
+ * 
+ * @returns {JSX.Element} The TokenDecimalsLookup component for looking up token decimals.
+ */
 const TokenDecimalsLookup: React.FC = () => {
   const { connection } = useConnection();
-  const [mintAddress, setMintAddress] = useState('');
+  const [mintAddress, setMintAddress] = useState<string>('');
   const [decimals, setDecimals] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
-  const lookupDecimals = async () => {
+  /**
+   * Fetches the decimal precision for the provided token mint address.
+   * It validates the address, queries the Solana blockchain for the mint account,
+   * and decodes the account data to extract the decimals using `MintLayout`.
+   * If an error occurs or the mint address is invalid, an error message will be displayed.
+   */
+  const lookupDecimals = async (): Promise<void> => {
     setLoading(true);
     setError('');
     setDecimals(null);
