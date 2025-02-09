@@ -11,13 +11,24 @@ import { InstructionInputType } from '../inputInstructionType';
 import useWalletOnePointOh from '@hooks/useWalletOnePointOh';
 import useGovernanceAssets from '@hooks/useGovernanceAssets';
 import DLMM from '@meteora-ag/dlmm';
+import { toStrategyParameters } from '@meteora-ag/dlmm';
 import { useConnection } from '@solana/wallet-adapter-react';
+import { MeteoraCreatePositionForm } from '@utils/uiTypes/proposalCreationTypes';
 import { getMintDecimals } from './GetMintDecimals';
+import { StrategyParameters } from '@meteora-ag/dlmm';
+
 /**
- * @deprecated Use `CreateLiquidityPool` instead.
+ * Component for creating a DLMM position within a decentralized liquidity market management system (DLMM).
+ * It allows users to input relevant information such as DLMM pool address, position public key,
+ * quote token, base token amounts, and strategy for the position creation.
  * 
+ * @param {Object} props - The component props
+ * @param {number} props.index - The index of the current proposal
+ * @param {ProgramAccount<Governance> | null} props.governance - The governance account for the proposal (if applicable)
+ * 
+ * @returns {JSX.Element} The DLMMCreatePosition form for creating a new liquidity position.
  */
-const CreateMeteoraPool = ({
+const DLMMCreatePosition = ({
   index,
   governance,
 }: {
@@ -31,54 +42,109 @@ const CreateMeteoraPool = ({
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const { handleSetInstructions } = useContext(NewProposalContext);
   const shouldBeGoverned = !!(index !== 0 && governance);
-  interface GovernedAccount {
-    governance: ProgramAccount<Governance> | null;
-  }
-
-  const [form, setForm] = useState<{
-    governedAccount: GovernedAccount | undefined;
-    tokenAMint: string;
-    tokenBMint: string;
-    quoteTokenAmount: string;
-    baseTokenAmount: string;
-    configAddress: string;
-    allocations: { address: string; percentage: number }[];
-  }>({
+  const [form, setForm] = useState<MeteoraCreatePositionForm>({
     governedAccount: undefined,
-    tokenAMint: '',
-    tokenBMint: '',
-    quoteTokenAmount: '0',
-    baseTokenAmount: '0',
-    configAddress: '',
-    allocations: [],
+    dlmmPoolAddress: '',
+    positionPubkey: '',
+    quoteToken: '0',
+    baseToken: '0',
+    strategy: 0,
   });
 
+  /**
+   * Yup schema for validating the DLMM position creation form.
+   * Ensures all required fields are filled and that numeric values are in the expected range.
+   */
   const schema = yup.object().shape({
     governedAccount: yup.object().nullable().required('Governed account is required'),
-    tokenAMint: yup.string().required('Token A Mint Address is required'),
-    tokenBMint: yup.string().required('Token B Mint Address is required'),
-    quoteTokenAmount: yup.number().required('Quote token amount is required').min(0, 'Amount must be greater than or equal to 0'),
-    baseTokenAmount: yup.number().required('Base token amount is required').min(0, 'Amount must be greater than or equal to 0'),
-    configAddress: yup.string().required('Config address is required'),
-    allocations: yup.array().of(
-      yup.object().shape({
-        address: yup.string().required('Address is required'),
-        percentage: yup.number().required('Percentage is required'),
-      })
-    ),
+    dlmmPoolAddress: yup.string().required('DLMM Pool Address is required'),
+    positionPubkey: yup.string().required('Position Pubkey is required'),
+    quoteToken: yup.number().required('quoteToken is required').min(0, 'quoteToken must be greater than or equal to 0'),
+    baseToken: yup.number().required('baseToken is required').min(0, 'baseToken must be greater than or equal to 0'),
+    strategy: yup.number().required('Strategy is required'),
   });
 
+  /**
+   * Fetches and validates the instruction for creating a DLMM liquidity position.
+   * Uses the provided form data to build a transaction that interacts with the DLMM pool and creates the position.
+   * If validation or instruction creation fails, returns a result indicating failure.
+   * 
+   * @returns {Promise<UiInstruction>} A promise that resolves to an object containing the serialized instruction for the transaction
+   */
   async function getInstruction(): Promise<UiInstruction> {
     console.log('Validating instruction and fetching data...');
     const isValid = await validateInstruction({ schema, form, setFormErrors });
     console.log(`Validation result: ${isValid}`);
     if (!isValid || !form?.governedAccount?.governance?.account || !wallet?.publicKey || !connected) {
       console.log('Validation failed or missing required data.');
-      return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance ?? undefined };
+      return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
     }
-    return { serializedInstruction: '', isValid: true, governance: form?.governedAccount?.governance };
+
+    let serializedInstruction = '';
+    let additionalSerializedInstructions: string[] = [];
+
+    try {
+      console.log('Building liquidity instruction...');
+      const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
+      const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
+      await dlmmPool.refetchStates();
+      console.log(`DLMM Pool created and states refetched: ${dlmmPoolPk.toBase58()}`);
+
+      const activeBin = await dlmmPool.getActiveBin();
+      const minBinId = activeBin.binId - 10;
+      const maxBinId = activeBin.binId + 10;
+
+      console.log(`Active bin ID: ${activeBin.binId}, minBinId: ${minBinId}, maxBinId: ${maxBinId}`);
+
+      const mintDecimals = await getMintDecimals(dlmmPoolPk.toBase58());
+      console.log(`Mint decimals: ${mintDecimals}`);
+
+      const quoteTokenAmount = new BN(parseFloat(form.quoteToken) * Math.pow(10, mintDecimals));
+      const baseTokenAmount = new BN(parseFloat(form.baseToken) * Math.pow(10, mintDecimals));
+   
+      console.log(`Amounts calculated: quoteTokenAmount = ${quoteTokenAmount.toString()}, baseTokenAmount = ${baseTokenAmount.toString()}`);
+   
+      const positionPk = new PublicKey(form.positionPubkey);
+
+      const strategyParams: StrategyParameters = {
+        minBinId,
+        maxBinId,
+        strategyType: form.strategy,
+        singleSidedX: false,
+      };
+      
+      const txOrTxs = await dlmmPool.createEmptyPosition({
+        positionPubKey: positionPk,
+        user: wallet.publicKey,
+        ...strategyParams,
+      });
+      
+      const txArray = Array.isArray(txOrTxs) ? txOrTxs : [txOrTxs];
+      if (txArray.length === 0) throw new Error('No transactions returned by create position.');
+      const primaryInstructions = txArray[0].instructions;
+      if (primaryInstructions.length === 0) throw new Error('No instructions in the create position transaction.');
+
+      serializedInstruction = serializeInstructionToBase64(primaryInstructions[0]);
+      if (primaryInstructions.length > 1) {
+        additionalSerializedInstructions = primaryInstructions.slice(1).map((ix: import('@solana/web3.js').TransactionInstruction) => serializeInstructionToBase64(ix));
+      }
+    } catch (err: any) {
+      console.error('Error building create position instruction:', err);
+      return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
+    }
+
+    return {
+      serializedInstruction,
+      additionalSerializedInstructions,
+      isValid: true,
+      governance: form?.governedAccount?.governance,
+    };
   }
 
+  /**
+   * Defines the inputs for the DLMM position creation form.
+   * These include the governed account, DLMM pool address, position public key, quote and base token amounts, and strategy.
+   */
   const inputs: InstructionInput[] = [
     {
       label: 'Governance',
@@ -90,46 +156,33 @@ const CreateMeteoraPool = ({
       options: assetAccounts,
     },
     {
-      label: 'Token A Mint Address',
-      initialValue: form.tokenAMint,
-      name: 'tokenAMint',
+      label: 'DLMM Pool Address',
+      initialValue: form.dlmmPoolAddress,
+      name: 'dlmmPoolAddress',
       type: InstructionInputType.INPUT,
       inputType: 'text',
     },
     {
-      label: 'Token B Mint Address',
-      initialValue: form.tokenBMint,
-      name: 'tokenBMint',
-      type: InstructionInputType.INPUT,
-      inputType: 'text',
-    },
-    {
-      label: 'Quote Token Amount',
-      initialValue: form.quoteTokenAmount,
-      name: 'quoteTokenAmount',
+      label: 'Quote Token',
+      initialValue: form.quoteToken,
+      name: 'quoteToken',
       type: InstructionInputType.INPUT,
       inputType: 'number',
     },
     {
-      label: 'Base Token Amount',
-      initialValue: form.baseTokenAmount,
-      name: 'baseTokenAmount',
+      label: 'Base Token',
+      initialValue: form.baseToken,
+      name: 'baseToken',
       type: InstructionInputType.INPUT,
       inputType: 'number',
     },
     {
-      label: 'Config Address',
-      initialValue: form.configAddress,
-      name: 'configAddress',
-      type: InstructionInputType.INPUT,
-      inputType: 'text',
-    },
-    {
-      label: 'Allocations',
-      initialValue: form.allocations,
-      name: 'allocations',
-      type: InstructionInputType.INPUT,
-      inputType: 'array',
+      label: 'Strategy',
+      initialValue: form.strategy,
+      name: 'strategy',
+      type: InstructionInputType.SELECT,
+      inputType: 'select',
+      options: strategyOptions,
     },
   ];
 
@@ -148,4 +201,4 @@ const CreateMeteoraPool = ({
   );
 };
 
-export default CreateMeteoraPool;
+export default DLMMCreatePosition;
