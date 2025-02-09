@@ -14,6 +14,16 @@ import DLMM from '@meteora-ag/dlmm';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { MeteoraClaimRewardsForm } from '@utils/uiTypes/proposalCreationTypes';
 
+/**
+ * Component to manage the claiming of rewards from a DLMM pool in a governance proposal.
+ * It allows the user to submit instructions for claiming rewards, and validates the form data before submission.
+ * 
+ * @param {object} props - The component properties.
+ * @param {number} props.index - The index of the component in the parent container.
+ * @param {ProgramAccount<Governance> | null} props.governance - The governance object that is associated with the proposal.
+ * 
+ * @returns {JSX.Element} The rendered component containing the instruction form for claiming rewards.
+ */
 const DLMMClaimAllRewards = ({
   index,
   governance,
@@ -35,6 +45,7 @@ const DLMMClaimAllRewards = ({
   const { handleSetInstructions } = useContext(NewProposalContext);
   const shouldBeGoverned = !!(index !== 0 && governance);
 
+  // Validation schema for the form data.
   const schema = yup.object().shape({
     governedAccount: yup.object().nullable().required('Governed account is required'),
     dlmmPoolAddress: yup
@@ -51,6 +62,12 @@ const DLMMClaimAllRewards = ({
     rewards: yup.string(),
   });
 
+  /**
+   * Fetches and serializes the instruction for claiming all rewards from the DLMM pool.
+   * Validates the form data and connects to the blockchain before submitting the transaction.
+   * 
+   * @returns {Promise<UiInstruction>} The instruction for claiming all rewards, serialized and ready for submission.
+   */
   const getInstruction = async (): Promise<UiInstruction> => {
     const isValid = await validateInstruction({ schema, form, setFormErrors });
     if (!isValid || !form?.governedAccount?.governance?.account || !wallet?.publicKey) {
@@ -87,7 +104,10 @@ const DLMMClaimAllRewards = ({
     };
   };
 
-
+  /**
+   * Form inputs that allow the user to configure the rewards claiming operation.
+   * Includes input fields for the governed account, DLMM pool address, and rewards amount.
+   */
   const inputs: InstructionInput[] = [
     {
       label: 'Governance',
@@ -113,7 +133,7 @@ const DLMMClaimAllRewards = ({
       inputType: 'text',
     },
   ];
-  
+
   useEffect(() => {
     handleSetInstructions({ governedAccount: form.governedAccount?.governance, getInstruction }, index);
   }, [form, handleSetInstructions, index]);
