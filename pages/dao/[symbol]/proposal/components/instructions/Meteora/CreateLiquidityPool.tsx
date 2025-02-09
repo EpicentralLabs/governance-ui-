@@ -147,22 +147,26 @@ const CreateLiquidityPool = ({
      * @param createPositionTx - The transaction object to send.
      * @returns {Promise<{ txHash: string; isValid: boolean }>} - The transaction hash and validity status.
      */
-    async function sendTransactionToBlockchain(wallet, createPositionTx) {
+    interface SendTransactionResult {
+      txHash: string;
+      isValid: boolean;
+    }
+    // TODO: We really shouldn't be using any here, but I'm not sure what the type should be
+    async function sendTransactionToBlockchain(wallet: any, createPositionTx: any): Promise<SendTransactionResult> {
       try {
-        // Use the signTransaction method of the wallet instead of the secretKey
-        const signedTransaction = await wallet.signTransaction(createPositionTx);
+      const signedTransaction = await wallet.signTransaction(createPositionTx);
     
-        const txHash = await sendAndConfirmTransaction(
-          connection,
-          signedTransaction,  // The signed transaction
-          [wallet]  // The wallet used to sign the transaction
-        );
+      const txHash = await sendAndConfirmTransaction(
+        connection,
+        signedTransaction,
+        [wallet] 
+      );
     
-        console.log(`Transaction successful with hash: ${txHash}`);
-        return { txHash, isValid: true };
+      console.log(`Transaction successful with hash: ${txHash}`);
+      return { txHash, isValid: true };
       } catch (error) {
-        console.error('Transaction failed:', error);
-        return { txHash: '', isValid: false };
+      console.error('Transaction failed:', error);
+      return { txHash: '', isValid: false };
       }
     }
 

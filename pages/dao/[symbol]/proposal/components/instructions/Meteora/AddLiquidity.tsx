@@ -160,6 +160,8 @@ const DLMMAddLiquidity = ({
       serializedInstruction = serializeInstructionToBase64(primaryInstructions[0]);
 
       if (primaryInstructions.length > 1) {
+            // TODO: We really shouldn't be using any here, but I'm not sure what the type should be
+
         additionalSerializedInstructions = primaryInstructions.slice(1).map((ix: any) => serializeInstructionToBase64(ix));
         console.log('Additional instructions found and serialized.');
       }
