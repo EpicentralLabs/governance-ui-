@@ -105,6 +105,8 @@ const DLMMCreatePosition = ({
         strategyType: form.strategy,
         singleSidedX: false,
       };
+
+      
       
       const txOrTxs = await dlmmPool.createEmptyPosition({
         positionPubKey: positionPk,

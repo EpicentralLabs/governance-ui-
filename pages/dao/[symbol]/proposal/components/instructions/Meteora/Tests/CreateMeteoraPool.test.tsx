@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import CreateLiquidityPool from '../CreateLiquidityPool';
+import CreateLiquidityPool from '../CreateDLMM';
 import { NewProposalContext } from '../../../../new';
 import { Governance, ProgramAccount } from '@solana/spl-governance';
 import { act } from 'react-dom/test-utils';

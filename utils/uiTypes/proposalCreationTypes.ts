@@ -399,12 +399,18 @@ export enum Instructions {
   SymmetryEditBasket,
   SymmetryDeposit,
   SymmetryWithdraw,
-  CreateMeteoraPool,
   MeteoraAddLiquidity,
   MeteoraRemoveLiquidity,
   MeteoraClaimRewards,
-  MeteroaCreateLiquidityPool,
+  MeteoraCreateLiquidityPool,
   MeteoraCreatePosition,
+  MeteoraCreatePoolToken,
+  MeteoraCreatePoolTokenAccount,
+  MeteoraCreatePoolTokenAccountWithSeed,
+  MeteoraSwap,
+  MeteoraSwapToken,
+  MeteoraDeposit,
+  MeteoraWithdraw,
 }
 
 export interface ComponentInstructionData {
