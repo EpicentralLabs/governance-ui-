@@ -402,7 +402,7 @@ export enum Instructions {
   MeteoraAddLiquidity,
   MeteoraRemoveLiquidity,
   MeteoraClaimRewards,
-  MeteoraCreateLiquidityPool,
+  CreateDLMM,
   MeteoraCreatePosition,
   MeteoraCreatePoolToken,
   MeteoraCreatePoolTokenAccount,

@@ -625,7 +625,7 @@ export default function useGovernanceAssets() {
       */ 
 
 
-    [Instructions.MeteoraCreateLiquidityPool]: {
+    [Instructions.CreateDLMM]: {
       name: 'Create DLMM Pool', 
       packageId: PackageEnum.Meteora,
     },
