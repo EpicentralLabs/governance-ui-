@@ -9,10 +9,14 @@ import { InstructionInputType } from '../inputInstructionType';
 import { AssetAccount } from '@utils/uiTypes/assets';
 import useGovernanceAssets from '@hooks/useGovernanceAssets';
 import { useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, TransactionInstruction } from '@solana/web3.js';
+import { PublicKey, TransactionInstruction, Connection } from '@solana/web3.js';
 import DLMM from '@meteora-ag/dlmm';
 import bs58 from 'bs58';
-
+import BN from 'bn.js';
+import {
+  Metadata,
+  PROGRAM_ID as TOKEN_METADATA_PROGRAM_ID,
+} from "@metaplex-foundation/mpl-token-metadata";
 /**
  * Validates if a string is a valid base58 encoded value
  * @param value - String to validate
@@ -82,6 +86,8 @@ const CreateDLMM = ({ index, governance }: { index: number; governance: ProgramA
    */
   async function validateTokenAccountOwnership(tokenMint: string): Promise<boolean> {
     try {
+      console.log(`Validating ownership for token mint: ${tokenMint}`);
+
       const tokenPublicKey = new PublicKey(tokenMint);
       const tokenAccountInfo = await connection.getAccountInfo(tokenPublicKey);
       
@@ -91,7 +97,8 @@ const CreateDLMM = ({ index, governance }: { index: number; governance: ProgramA
       }
 
       // Check if the token account is owned by the token program
-      const tokenProgramId = new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo');
+      const tokenProgramId = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+      console.log(`Token account owner: ${tokenAccountInfo.owner.toBase58()}`);
       if (!tokenAccountInfo.owner.equals(tokenProgramId)) {
         console.error(`Token account for mint ${tokenMint} is not owned by the Token Program.`);
         return false;
@@ -114,7 +121,9 @@ const CreateDLMM = ({ index, governance }: { index: number; governance: ProgramA
 
     if (!form.governedAccount?.governance?.account) {
       errors.governedAccount = 'Governed account is required';
-    }
+    } 
+    console.log('Checking token mints...');
+    console.log('Base Token Mint:', form.baseTokenMint);
 
     if (!form.baseTokenMint || !form.quoteTokenMint) {
       errors.tokenMints = 'Both token mint addresses must be provided';
@@ -126,57 +135,159 @@ const CreateDLMM = ({ index, governance }: { index: number; governance: ProgramA
       if (!isBase58(form.quoteTokenMint)) {
         errors.quoteTokenMint = 'Quote Token Mint is not a valid base58 string';
       }
+      console.log('Validating token account ownership...');
+
 
       const baseTokenOwnership = await validateTokenAccountOwnership(form.baseTokenMint);
       if (!baseTokenOwnership) {
         errors.baseTokenMint = 'Base Token Account ownership validation failed.';
       }
+      console.log('Base Token Ownership:', baseTokenOwnership);
 
       const quoteTokenOwnership = await validateTokenAccountOwnership(form.quoteTokenMint);
       if (!quoteTokenOwnership) {
         errors.quoteTokenMint = 'Quote Token Account ownership validation failed.';
       }
+      console.log('Quote Token Ownership:', quoteTokenOwnership);
     }
-
+    const baseTokenPublicKey = new PublicKey(form.baseTokenMint);
+    const accountInfo = await connection.getAccountInfo(baseTokenPublicKey);
+    console.log('Owner:', accountInfo?.owner.toBase58());
+    console.log('Data:', accountInfo?.data);
+    console.log('Lamports:', accountInfo?.lamports);
+    console.log('Executable:', accountInfo?.executable);
+    
+    console.log('Errors:', errors);
+    
     setFormErrors(errors);
 
     return Object.keys(errors).length === 0;
   };
-  
-  /**
-   * Creates a new DLMM pool instruction using provided token mints
-   * @returns Promise resolving to TransactionInstruction or null if creation fails
-   */
+  async function getOrCreateLbPair(connection: Connection, baseTokenMint: PublicKey, quoteTokenMint: PublicKey, binStep: BN, baseFactor: BN) {
+    const opt = {}; // Optional additional options
+    
+    // Check if LB Pair exists for the token pair
+    const lbPairPubkey = await DLMM.getPairPubkeyIfExists(connection, baseTokenMint, quoteTokenMint, binStep, baseFactor, opt);
+    
+    if (lbPairPubkey) {
+      console.log("LB Pair already exists:", lbPairPubkey.toBase58());
+      return lbPairPubkey; // Return the existing LB Pair PublicKey
+    } else {
+      // If the LB Pair doesn't exist, we will need to create it.
+      console.log("LB Pair does not exist. Creating a new LB Pair...");
+      
+      try {
+        // Create the LB Pair
+        const lbPairPublicKey = await DLMM.create(connection, baseTokenMint, {
+          programId: new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo'), // DLMM Program ID
+        });
+        console.log("LB Pair created successfully:", lbPairPublicKey instanceof PublicKey ? lbPairPublicKey.toBase58() : 'Unknown');
+        return lbPairPublicKey; // Return the new LB Pair PublicKey
+      } catch (error) {
+        console.error("Error creating LB Pair:", error);
+        throw new Error("Failed to create LB Pair");
+      }
+    }
+  }
+  async function getTokenMetadata(mintAddress: string, connection) {
+    const mintPubKey = new PublicKey(mintAddress);
+      const [metadataPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("metadata"), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mintPubKey.toBuffer()],
+      TOKEN_METADATA_PROGRAM_ID
+    );
+      const metadataAccountInfo = await connection.getAccountInfo(metadataPDA);
+    if (!metadataAccountInfo) {
+      console.log(`No metadata found for mint: ${mintAddress}`);
+      return null;
+    }
+    const metadata = Metadata.deserialize(metadataAccountInfo.data)[0];
+    return metadata.data;
+  }
+
   async function createNewPoolInstruction(): Promise<TransactionInstruction | null> {
     try {
-      const baseTokenPublicKey = new PublicKey(form.baseTokenMint); 
+      console.log('Creating new DLMM pool instruction...');
+      const baseTokenPublicKey = new PublicKey(form.baseTokenMint);
       const quoteTokenPublicKey = new PublicKey(form.quoteTokenMint);
+      console.log('Base Token Public Key:', baseTokenPublicKey.toBase58());
+      console.log('Quote Token Public Key:', quoteTokenPublicKey.toBase58());
+      const baseTokenMetadata = await getTokenMetadata(baseTokenPublicKey.toBase58(), connection);
+      const quoteTokenMetadata = await getTokenMetadata(quoteTokenPublicKey.toBase58(), connection);
+      console.log('----------------------------------------');
+      console.log('🚀 Token Information');
+      console.log('----------------------------------------');
+      if (baseTokenMetadata) {
+        console.log(`🟢 Base Token:   ${baseTokenMetadata.name}`);
+      } else {
+        console.log('🔴 Base Token metadata not found.');
+        }
+      if (quoteTokenMetadata) {
+        console.log(`🟡 Quote Token:  ${quoteTokenMetadata.name}`);
+      } else {
+        console.log('🔴 Quote Token metadata not found.');
+      }
+        console.log('----------------------------------------');
 
-      // Create new DLMM pool with additional parameters
-      await DLMM.create(connection, baseTokenPublicKey, {
-        programId: new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo'),
-        // Correct or remove invalid properties
-        // baseFee: form.baseFee,
-        // binSize: form.binSize,
-      });
-
-      const instruction = new TransactionInstruction({
-        keys: [
-          { pubkey: baseTokenPublicKey, isSigner: false, isWritable: true },
-          { pubkey: quoteTokenPublicKey, isSigner: false, isWritable: true },
-          // Add other necessary keys here
-        ],
-        programId: new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo'),
-        data: Buffer.from([]), // Add any necessary data here
-      });
-
-      return instruction;
+      const baseAccountInfo = await connection.getAccountInfo(baseTokenPublicKey);
+      const quoteAccountInfo = await connection.getAccountInfo(quoteTokenPublicKey);
+      console.log("Base Token Account Info:", baseAccountInfo);
+      console.log("Quote Token Account Info:", quoteAccountInfo);
+  
+      const dlmmProgramId = new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo');
+      const [poolPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("DLMM_POOL"), baseTokenPublicKey.toBuffer(), quoteTokenPublicKey.toBuffer()],
+        dlmmProgramId
+      );
+  
+      const poolAccountInfo = await connection.getAccountInfo(poolPDA);
+      console.log("Pool Account Exists:", !!poolAccountInfo);
+      console.log("Expected Pool PDA:", poolPDA.toBase58());
+  
+      if (!poolAccountInfo) {
+        console.log('Pool account does not exist. Proceeding with pool creation...');
+  
+        const lbPairPublicKey = await DLMM.getPairPubkeyIfExists(
+          connection,
+          baseTokenPublicKey,
+          quoteTokenPublicKey,
+          new BN(form.baseFee),
+          new BN(form.binSize)
+        );
+  
+        if (lbPairPublicKey) {
+          console.log('LB Pair found:', lbPairPublicKey.toBase58());
+        } else {
+          console.log('LB Pair not found');
+        }
+  
+        await DLMM.create(connection, baseTokenPublicKey, {
+          programId: dlmmProgramId,
+        });
+  
+        console.log('DLMM pool created successfully.');
+  
+        const instruction = new TransactionInstruction({
+          keys: [
+            { pubkey: baseTokenPublicKey, isSigner: false, isWritable: true },
+            { pubkey: quoteTokenPublicKey, isSigner: false, isWritable: true },
+          ],
+          programId: dlmmProgramId,
+          data: Buffer.from([]),
+        });
+  
+        console.log('DLMM pool instruction created:', instruction);
+        return instruction;
+      } else {
+        console.log('Pool already exists. Skipping creation.');
+        return null;
+      }
     } catch (error) {
       console.error('Error creating liquidity pool:', error);
       return null;
     }
   }
   
+
   /**
    * Gets the instruction for creating a new pool, including validation
    * @returns Promise resolving to UiInstruction containing the serialized instruction
@@ -197,9 +308,10 @@ const CreateDLMM = ({ index, governance }: { index: number; governance: ProgramA
         console.log('Failed to create pool instruction, returning invalid instruction');
         return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance ?? undefined };
       }
+      console.log('Instruction created:', instruction);
 
       const serializedInstruction = serializeInstructionToBase64(instruction);
-
+      console.log('Serialized instruction:', serializedInstruction);
       return { serializedInstruction, isValid: true, governance: form?.governedAccount?.governance ?? undefined };
     } catch (error) {
       console.error('Error during pool creation:', error);
@@ -214,6 +326,7 @@ const CreateDLMM = ({ index, governance }: { index: number; governance: ProgramA
         governedAccount: form.governedAccount.governance,
         getInstruction: () => getInstruction(),
       }, index);
+      console.log
     }
   }, [form.governedAccount, handleSetInstructions, index]);
 
@@ -267,3 +380,5 @@ const CreateDLMM = ({ index, governance }: { index: number; governance: ProgramA
 };
 
 export default CreateDLMM;
+
+
