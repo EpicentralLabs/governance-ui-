@@ -181,13 +181,6 @@ const DLMMCreatePosition = ({
           },
         })
 
-      console.log(createPositionTx)
-
-      console.log(form.governedAccount?.governance.pubkey.toString())
-
-      const simulate = await connection.simulateTransaction(createPositionTx)
-      console.log(simulate)
-
       // Filter out compute budget program instructions, they get added later in the dryRun.
       const filteredInstructions = createPositionTx.instructions.filter(
         (ix) => !ix.programId.equals(ComputeBudgetProgram.programId),
