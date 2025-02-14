@@ -1,10 +1,10 @@
 import React, { useContext, useEffect, useState } from 'react';
 import * as yup from 'yup';
-import { BN } from 'bn.js';
+import BN from 'bn.js';
 import { ProgramAccount, serializeInstructionToBase64, Governance } from '@solana/spl-governance';
 import { validateInstruction } from '@utils/instructionTools';
 import { UiInstruction } from '@utils/uiTypes/proposalCreationTypes';
-import { PublicKey } from '@solana/web3.js';
+import { PublicKey, Keypair } from '@solana/web3.js';
 import { NewProposalContext } from '../../../new';
 import InstructionForm, { InstructionInput } from '../FormCreator';
 import { InstructionInputType } from '../inputInstructionType';
@@ -44,89 +44,89 @@ const DLMMCreatePosition = ({
     governedAccount: undefined,
     dlmmPoolAddress: '',
     positionPubkey: '',
-    quoteToken: '0',
-    baseToken: '0',
+    tokenAmount: 0,
+    quoteToken: '',
+    baseToken: '',
     strategy: 0,
+    response: ''
   });
 
-  const schema = yup.object().shape({
-    governedAccount: yup.object().nullable().required('Governed account is required'),
-    dlmmPoolAddress: yup.string().required('DLMM Pool Address is required'),
-    positionPubkey: yup.string().required('Position Pubkey is required'),
-    quoteToken: yup.number().required('quoteToken is required').min(0, 'quoteToken must be greater than or equal to 0'),
-    baseToken: yup.number().required('baseToken is required').min(0, 'baseToken must be greater than or equal to 0'),
-    strategy: yup.number().required('Strategy is required'),
-  });
 
-  async function getInstruction(): Promise<UiInstruction> {
-    console.log('Validating instruction and fetching data...');
-    const isValid = await validateInstruction({ schema, form, setFormErrors });
-    console.log(`Validation result: ${isValid}`);
-    if (!isValid || !form?.governedAccount?.governance?.account || !wallet?.publicKey || !connected) {
-      console.log('Validation failed or missing required data.');
-      return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
-    }
+async function getInstruction(): Promise<UiInstruction> {
 
-    let serializedInstruction = '';
-    let additionalSerializedInstructions: string[] = [];
-
-    try {
-      console.log('Building liquidity instruction...');
-      const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
-      const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
-      await dlmmPool.refetchStates();
-      console.log(`DLMM Pool created and states refetched: ${dlmmPoolPk.toBase58()}`);
-
-      const activeBin = await dlmmPool.getActiveBin();
-      const minBinId = activeBin.binId - 10;
-      const maxBinId = activeBin.binId + 10;
-
-      console.log(`Active bin ID: ${activeBin.binId}, minBinId: ${minBinId}, maxBinId: ${maxBinId}`);
-
-      const mintDecimals = await getMintDecimals(dlmmPoolPk.toBase58());
-      console.log(`Mint decimals: ${mintDecimals}`);
-
-      const quoteTokenAmount = new BN(parseFloat(form.quoteToken) * Math.pow(10, mintDecimals));
-      const baseTokenAmount = new BN(parseFloat(form.baseToken) * Math.pow(10, mintDecimals));
-   
-      console.log(`Amounts calculated: quoteTokenAmount = ${quoteTokenAmount.toString()}, baseTokenAmount = ${baseTokenAmount.toString()}`);
-   
-      const positionPk = new PublicKey(form.positionPubkey);
-
-      const strategyParams: StrategyParameters = {
-        minBinId,
-        maxBinId,
-        strategyType: form.strategy,
-        singleSidedX: false,
-      };
-      
-      const txOrTxs = await dlmmPool.createEmptyPosition({
-        positionPubKey: positionPk,
-        user: wallet.publicKey,
-        ...strategyParams,
-      });
-      
-      const txArray = Array.isArray(txOrTxs) ? txOrTxs : [txOrTxs];
-      if (txArray.length === 0) throw new Error('No transactions returned by create position.');
-      const primaryInstructions = txArray[0].instructions;
-      if (primaryInstructions.length === 0) throw new Error('No instructions in the create position transaction.');
-
-      serializedInstruction = serializeInstructionToBase64(primaryInstructions[0]);
-      if (primaryInstructions.length > 1) {
-        additionalSerializedInstructions = primaryInstructions.slice(1).map((ix: import('@solana/web3.js').TransactionInstruction) => serializeInstructionToBase64(ix));
-      }
-    } catch (err: any) {
-      console.error('Error building create position instruction:', err);
-      return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
-    }
-
-    return {
-      serializedInstruction,
-      additionalSerializedInstructions,
-      isValid: true,
-      governance: form?.governedAccount?.governance,
-    };
+  if (!form?.governedAccount?.governance?.account || !wallet?.publicKey || !connected) {
+    console.log('Validation failed or missing required data.');
+    return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
   }
+
+  const positionKeypair = Keypair.generate();
+  const positionPubKey = positionKeypair.publicKey;
+  let serializedInstruction = '';
+  let additionalSerializedInstructions: string[] = [];
+
+  try {
+    console.log('Building liquidity instruction...');
+    const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
+    const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
+    await dlmmPool.refetchStates();
+    console.log(`DLMM Pool created and states refetched: ${dlmmPoolPk.toBase58()}`);
+
+
+    const activeBin = await dlmmPool.getActiveBin();
+    const TOTAL_RANGE_INTERVAL = 10; // 10 bins on each side of the active bin
+    const minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL;
+    const maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL;
+
+    console.log(`Active bin ID: ${activeBin.binId}, minBinId: ${minBinId}, maxBinId: ${maxBinId}`);
+
+    // Calculate totalXAmount and totalYAmount
+    const activeBinPricePerToken = dlmmPool.fromPricePerLamport(Number(activeBin.price));
+    const totalXAmount = new BN(form.tokenAmount);  // Use the token amount entered by the user
+    const totalYAmount = totalXAmount.mul(new BN(Number(activeBinPricePerToken)));
+
+    const createPositionTx =
+    await dlmmPool.initializePositionAndAddLiquidityByStrategy({
+      positionPubKey: positionPubKey,
+      user: form.governedAccount?.governance.pubkey,
+      totalXAmount,
+      totalYAmount,
+      strategy: {
+        maxBinId,
+        minBinId,
+        strategyType: form.strategy,
+      },
+    });
+
+    const txArray = Array.isArray(createPositionTx) ? createPositionTx : [createPositionTx];
+    if (txArray.length === 0) throw new Error('No transactions returned by create position.');
+    const primaryInstructions = txArray[0].instructions;
+    if (primaryInstructions.length === 0) throw new Error('No instructions in the create position transaction.');
+
+    serializedInstruction = serializeInstructionToBase64(primaryInstructions[0]);
+    if (primaryInstructions.length > 1) {
+      additionalSerializedInstructions = primaryInstructions.slice(1).map((ix: import('@solana/web3.js').TransactionInstruction) => serializeInstructionToBase64(ix));
+    }
+
+  } catch (err: any) {
+    console.error('Error building create position instruction:', err);
+    setFormErrors((prev) => ({
+      ...prev,
+      general: 'Error building create position instruction',
+    }));
+    return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
+  }
+
+  return {
+    serializedInstruction,
+    additionalSerializedInstructions,
+    isValid: true,
+    governance: form?.governedAccount?.governance,
+  };
+}
+
+  
+  
+
 
   const inputs: InstructionInput[] = [
     {
@@ -146,18 +146,25 @@ const DLMMCreatePosition = ({
       inputType: 'text',
     },
     {
-      label: 'Quote Token',
-      initialValue: form.quoteToken,
-      name: 'quoteToken',
-      type: InstructionInputType.INPUT,
-      inputType: 'number',
-    },
-    {
       label: 'Base Token',
       initialValue: form.baseToken,
       name: 'baseToken',
       type: InstructionInputType.INPUT,
+      inputType: 'text',
+    },
+    {
+      label: 'Base Token Amount',
+      initialValue: form.tokenAmount,
+      name: 'tokenAmount',
+      type: InstructionInputType.INPUT,
       inputType: 'number',
+    },
+    {
+      label: 'Quote Token',
+      initialValue: form.quoteToken,
+      name: 'quoteToken',
+      type: InstructionInputType.INPUT,
+      inputType: 'text',
     },
     {
       label: 'Strategy',
@@ -167,12 +174,50 @@ const DLMMCreatePosition = ({
       inputType: 'select',
       options: strategyOptions,
     },
+    {
+      label: 'Response',
+      initialValue: form.response,
+      name: 'response',
+      type: InstructionInputType.TEXTAREA,
+      inputType: 'text',
+    },
   ];
 
   useEffect(() => {
     handleSetInstructions({ governedAccount: form.governedAccount?.governance, getInstruction }, index);
   }, [form, handleSetInstructions, index]);
-
+  useEffect(() => {
+    const fetchTokenPair = async () => {
+      if (!form.dlmmPoolAddress) return;
+  
+      try {
+        const uri = `https://dlmm-api.meteora.ag/pair/${form.dlmmPoolAddress}`;
+        const response = await fetch(uri);
+        if (!response.ok) throw new Error('Failed to fetch token pair data');
+  
+        const data = await response.json();
+        const parsePairs = (pairs: string) => {
+          const [quoteToken, baseToken] = pairs.split('-').map((pair: string) => pair.trim());
+          return { quoteToken, baseToken };
+        };
+        const { quoteToken, baseToken } = parsePairs(data.name);
+  
+        setForm((prevForm) => ({
+          ...prevForm,
+          baseToken: baseToken,
+          quoteToken: quoteToken,
+          response: JSON.stringify(data, null, 4),
+        }));
+  
+        console.log(`Updated baseToken: ${baseToken}, quoteToken: ${quoteToken}`);
+      } catch (error) {
+        console.error('Error fetching token pair:', error);
+      }
+    };
+  
+    fetchTokenPair();
+  }, [form.dlmmPoolAddress]);
+  
   return (
     <InstructionForm
       outerForm={form}
