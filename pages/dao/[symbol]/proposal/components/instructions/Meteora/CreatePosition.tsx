@@ -172,7 +172,7 @@ const DLMMCreatePosition = ({
           positionPubKey: positionKeypair.publicKey,
           user: wallet?.publicKey,
           totalXAmount,
-          slippage: 0.01,
+          slippage: 5,
           totalYAmount,
           strategy: {
             maxBinId,
