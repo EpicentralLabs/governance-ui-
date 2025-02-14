@@ -14,16 +14,25 @@ import DLMM from '@meteora-ag/dlmm';
 import { toStrategyParameters } from '@meteora-ag/dlmm';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { MeteoraCreatePositionForm } from '@utils/uiTypes/proposalCreationTypes';
-import { getMintDecimals } from './GetMintDecimals';
 import { StrategyParameters } from '@meteora-ag/dlmm';
 
+const schema = yup.object().shape({
+  governedAccount: yup.object().required('Governed account is required'),
+  dlmmPoolAddress: yup.string().required('DLMM pool address is required'),
+  baseToken: yup.string().required('Base token is required'),
+  baseTokenAmount: yup.number().required('Base token amount is required').min(0),
+  quoteToken: yup.string().required('Quote token is required'),
+  quoteTokenAmount: yup.number().required('Quote token amount is required').min(0),
+  strategy: yup.number().required('Strategy is required'),
+  minPrice: yup.number().required('Min price is required').min(0),
+  maxPrice: yup.number().required('Max price is required').min(0),
+  numBins: yup.number().required('Number of bins is required').min(1)
+});
+
 const strategyOptions = [
-  { name: 'Spot Balanced', value: 0 },
-  { name: 'Curve Balanced', value: 1 },
-  { name: 'BidAsk Balanced', value: 2 },
-  { name: 'Spot Imbalanced', value: 3 },
-  { name: 'Curve Imbalanced', value: 4 },
-  { name: 'BidAsk Imbalanced', value: 5 },
+  { name: 'Spot', value: 0, description: 'Provides a uniform distribution that is versatile and risk adjusted, suitable for any type of market and conditions. This is similar to setting a CLMM price range.' },
+  { name: 'Curve', value: 1 },
+  { name: 'Bid Ask', value: 2 },
 ];
 
 const DLMMCreatePosition = ({
@@ -43,58 +52,83 @@ const DLMMCreatePosition = ({
   const [form, setForm] = useState<MeteoraCreatePositionForm>({
     governedAccount: undefined,
     dlmmPoolAddress: '',
-    positionPubkey: '',
-    tokenAmount: 0,
-    quoteToken: '',
     baseToken: '',
+    baseTokenAmount: 0,
+    quoteToken: '',
+    quoteTokenAmount: 0,
     strategy: 0,
-    response: ''
+    minPrice: 0,
+    maxPrice: 0,
+    numBins: 69,
+    autoFill: false,
+    positionPubkey: '',
+    description: '',
+    binStep: 0
   });
 
    const getInstruction = async (): Promise<UiInstruction> => {
-    if (!form?.governedAccount?.governance?.account || !wallet?.publicKey || !connected) {
-      console.log('Validation failed or missing required data.');
+    const isValid = await validateInstruction({ schema, form, setFormErrors });
+    if (!isValid || !form?.governedAccount?.governance?.account || !wallet?.publicKey || !connected) {
       return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
     }
 
-    const positionKeypair = Keypair.generate();
-    const positionPubKey = positionKeypair.publicKey;
-    const serializedInstruction = '';
-    const additionalSerializedInstructions: string[] = [];
-
     try {
-      console.log('Building liquidity instruction...');
       const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
-      console.log('DLMM Pool Public Key:', dlmmPoolPk.toBase58());
-
       const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
       await dlmmPool.refetchStates();
-      console.log(`DLMM Pool created and states refetched: ${dlmmPoolPk.toBase58()}`);
 
+      // Get active bin and calculate range
       const activeBin = await dlmmPool.getActiveBin();
       console.log('Active bin:', activeBin);
-      const TOTAL_RANGE_INTERVAL = 10;
-      const minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL;
-      const maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL;
 
-      const activeBinPricePerTokenBN = new BN(Math.floor(Number(activeBin.price) * 1000000000));
-      const totalXAmount = new BN(form.tokenAmount);
-      const totalYAmount = totalXAmount.mul(activeBinPricePerTokenBN);
-      console.log('Active Bin Price Per Token:', activeBinPricePerTokenBN.toString());
-      console.log('Calculated Total X Amount:', totalXAmount.toString());
-      console.log('Calculated Total Y Amount:', totalYAmount.toString());
-
-      if (totalXAmount.isZero() || activeBinPricePerTokenBN.isZero()) {
-        console.error('Error: Zero amount or price per token.');
-        setFormErrors((prev) => ({
-          ...prev,
-          general: 'Invalid token amount or price per token.',
-        }));
-        return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
+      // Calculate bin IDs based on prices
+      let minBinId: number, maxBinId: number;
+      
+      // Use binStep from form state instead of dlmmPool.state
+      const binStep = form.binStep;
+      
+      if (!binStep) {
+        throw new Error('Bin step not available');
       }
 
+      if (form.autoFill) {
+        const TOTAL_RANGE_INTERVAL = 10;
+        minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL;
+        maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL;
+      } else {
+        minBinId = Math.floor(Math.log(form.minPrice) / Math.log(1 + binStep/10000));
+        maxBinId = Math.ceil(Math.log(form.maxPrice) / Math.log(1 + binStep/10000));
+        
+        // Calculate and update number of bins based on price range
+        const calculatedNumBins = maxBinId - minBinId + 1;
+        
+        // Update form with calculated number of bins
+        setForm(prev => ({
+          ...prev,
+          numBins: calculatedNumBins
+        }));
+        
+        // Validate bin range (can keep this as a safety check)
+        if (calculatedNumBins > 69) { // Max bins allowed
+          throw new Error('Price range too large - exceeds maximum allowed bins (69)');
+        }
+      }
+
+      // Get actual prices from bin IDs for validation using the correct bin step
+      const minBinPrice = (1 + binStep/10000) ** minBinId;
+      const maxBinPrice = (1 + binStep/10000) ** maxBinId;
+      console.log(`Price Range: ${minBinPrice} - ${maxBinPrice}`);
+
+      // Convert amounts to BN directly
+      const totalXAmount = new BN(form.baseTokenAmount);
+      const totalYAmount = new BN(form.quoteTokenAmount);
+
+      // Generate position keypair
+      const positionKeypair = Keypair.generate();
+
+      // Create the position transaction
       const createPositionTx = await dlmmPool.initializePositionAndAddLiquidityByStrategy({
-        positionPubKey: positionPubKey,
+        positionPubKey: positionKeypair.publicKey,
         user: form.governedAccount?.governance.pubkey,
         totalXAmount,
         totalYAmount,
@@ -105,56 +139,41 @@ const DLMMCreatePosition = ({
         },
       });
 
-      console.log('Transaction returned by initializePositionAndAddLiquidityByStrategy:', createPositionTx);
       const txArray = Array.isArray(createPositionTx) ? createPositionTx : [createPositionTx];
-
       if (txArray.length === 0) {
         throw new Error('No transactions returned by create position.');
       }
 
-      console.log('Transaction Array:', txArray);
-      txArray.forEach((tx, txIndex) => {
-        tx.instructions.forEach((instruction, index) => {
-          console.log(`Transaction #${txIndex}, Instruction #${index}:`);
-          console.log('Program ID:', instruction.programId.toString());
-          console.log('Instruction Data (Hex):', instruction.data.toString('hex'));
-        });
-      });
-
       const primaryInstructions = txArray[0].instructions;
-      console.log('Primary Instructions:', primaryInstructions);
-
-      primaryInstructions.forEach((instr, index) => {
-        console.log(`Instruction #${index}:`);
-        console.log('Program ID:', instr.programId.toString());
-        console.log('Instruction Data (Hex):', instr.data.toString('hex'));
-      });
-
       if (primaryInstructions.length === 0) {
         throw new Error('No instructions in the create position transaction.');
       }
 
-      console.log('Primary Instructions Length:', primaryInstructions.length);
-      const serializedPrimaryInstructions: string[] = primaryInstructions.map((instruction) =>
-        serializeInstructionToBase64(instruction),
+      // Set the primary instruction as the first one
+      const serializedInstruction = serializeInstructionToBase64(primaryInstructions[0]);
+      
+      // Add any remaining instructions as additional instructions
+      const additionalSerializedInstructions = primaryInstructions.slice(1).map(
+        instruction => serializeInstructionToBase64(instruction)
       );
-      console.log('Serialized Primary Instructions:', serializedPrimaryInstructions);
 
-    } catch (err: any) {
+      return {
+        serializedInstruction,
+        additionalSerializedInstructions,
+        isValid: true,
+        governance: form?.governedAccount?.governance,
+        signers: [positionKeypair],
+      };
+
+    } catch (err) {
       console.error('Error building create position instruction:', err);
       setFormErrors((prev) => ({
         ...prev,
-        general: 'Error building create position instruction',
+        general: 'Error building create position instruction: ' + err.message,
       }));
       return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
     }
 
-    return {
-      serializedInstruction,
-      additionalSerializedInstructions,
-      isValid: true,
-      governance: form?.governedAccount?.governance,
-    };
   };
 
   const inputs: InstructionInput[] = [
@@ -183,8 +202,8 @@ const DLMMCreatePosition = ({
     },
     {
       label: 'Base Token Amount',
-      initialValue: form.tokenAmount,
-      name: 'tokenAmount',
+      initialValue: form.baseTokenAmount,
+      name: 'baseTokenAmount',
       type: InstructionInputType.INPUT,
       inputType: 'number',
     },
@@ -196,6 +215,13 @@ const DLMMCreatePosition = ({
       inputType: 'text',
     },
     {
+      label: 'Quote Token Amount',
+      initialValue: form.quoteTokenAmount,
+      name: 'quoteTokenAmount',
+      type: InstructionInputType.INPUT,
+      inputType: 'number',
+    },
+    {
       label: 'Strategy',
       initialValue: form.strategy,
       name: 'strategy',
@@ -204,12 +230,32 @@ const DLMMCreatePosition = ({
       options: strategyOptions,
     },
     {
-      label: 'Response',
-      initialValue: form.response,
-      name: 'response',
-      type: InstructionInputType.TEXTAREA,
-      inputType: 'text',
+      label: 'Min Price',
+      initialValue: form.minPrice,
+      name: 'minPrice',
+      type: InstructionInputType.INPUT,
+      inputType: 'number',
     },
+    {
+      label: 'Max Price',
+      initialValue: form.maxPrice,
+      name: 'maxPrice',
+      type: InstructionInputType.INPUT,
+      inputType: 'number',
+    },
+    {
+      label: 'Number of Bins',
+      initialValue: form.numBins,
+      name: 'numBins',
+      type: InstructionInputType.INPUT,
+      inputType: 'number',
+    },
+    {
+      label: 'Auto-Fill',
+      initialValue: form.autoFill,
+      name: 'autoFill',
+      type: InstructionInputType.SWITCH,
+    }
   ];
 
   useEffect(() => {
@@ -217,13 +263,13 @@ const DLMMCreatePosition = ({
   }, [form, handleSetInstructions, index]);
 
   useEffect(() => {
-    const fetchTokenPair = async () => {
+    const fetchPoolData = async () => {
       if (!form.dlmmPoolAddress) return;
 
       try {
         const uri = `https://dlmm-api.meteora.ag/pair/${form.dlmmPoolAddress}`;
         const response = await fetch(uri);
-        if (!response.ok) throw new Error('Failed to fetch token pair data');
+        if (!response.ok) throw new Error('Failed to fetch pool data');
 
         const data = await response.json();
         const parsePairs = (pairs: string) => {
@@ -231,21 +277,22 @@ const DLMMCreatePosition = ({
           return { quoteToken, baseToken };
         };
         const { quoteToken, baseToken } = parsePairs(data.name);
+        const binStep = data.binStep; // Get binStep from API response
 
         setForm((prevForm) => ({
           ...prevForm,
-          baseToken: baseToken,
-          quoteToken: quoteToken,
-          response: JSON.stringify(data, null, 4),
+          baseToken,
+          quoteToken,
+          binStep, // Store binStep in form state
         }));
 
-        console.log(`Updated baseToken: ${baseToken}, quoteToken: ${quoteToken}`);
+        console.log(`Updated pool data - baseToken: ${baseToken}, quoteToken: ${quoteToken}, binStep: ${binStep}`);
       } catch (error) {
-        console.error('Error fetching token pair:', error);
+        console.error('Error fetching pool data:', error);
       }
     };
 
-    fetchTokenPair();
+    fetchPoolData();
   }, [form.dlmmPoolAddress]);
 
   return (

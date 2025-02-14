@@ -665,10 +665,16 @@ export interface MeteoraCreatePositionForm {
   governedAccount: AssetAccount | undefined;
   dlmmPoolAddress: string;
   positionPubkey: string;
-  tokenAmount: number;
+  baseTokenAmount: number;
+  quoteTokenAmount: number;
   quoteToken: string;
   baseToken: string;
   strategy: number;
-  response: string;
+  minPrice: number;
+  maxPrice: number;
+  numBins: number;
+  autoFill: boolean;
+  description: string;
+  binStep: number;
 }
 

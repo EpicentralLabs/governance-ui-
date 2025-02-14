@@ -626,51 +626,51 @@ export default function useGovernanceAssets() {
 
 
     [Instructions.CreateDLMM]: {
-      name: 'Create DLMM Pool', 
+      name: 'Meteora: Create DLMM Pool', 
       packageId: PackageEnum.Meteora,
     },
     [Instructions.MeteoraCreatePosition]: {
-      name: 'Create Position',
+      name: 'Meteora: Create Position',
       packageId: PackageEnum.Meteora,
     },
     [Instructions.MeteoraAddLiquidity]: {
-      name: 'Add Liquidity',
+      name: 'Meteora: Add Liquidity',
       packageId: PackageEnum.Meteora,
     },
     [Instructions.MeteoraRemoveLiquidity]: {
-      name: 'Remove Liquidity',
+      name: 'Meteora: Remove Liquidity',
       packageId: PackageEnum.Meteora,
     },
     [Instructions.MeteoraClaimRewards]: {
-      name: 'Claim Rewards',
+      name: 'Meteora: Claim Rewards',
       packageId: PackageEnum.Meteora,
     },
     [Instructions.MeteoraSwap]: {
-      name: 'Swap',
+      name: 'Meteora: Swap',
       packageId: PackageEnum.Meteora,
     },
     [Instructions.MeteoraCreatePoolToken]: {
-      name: 'Create Pool Token',
+      name: 'Meteora: Create Pool Token',
       packageId: PackageEnum.Meteora,
     },
     [Instructions.MeteoraDeposit]: {
-      name: 'Deposit',
+      name: 'Meteora: Deposit',
       packageId: PackageEnum.Meteora,
     },
     [Instructions.MeteoraWithdraw]: {
-      name: 'Withdraw',
+      name: 'Meteora: Withdraw',
       packageId: PackageEnum.Meteora,
     },
     [Instructions.MeteoraSwapToken]: {
-      name: 'Swap Token',
+      name: 'Meteora: Swap Token',
       packageId: PackageEnum.Meteora,
     },
     [Instructions.MeteoraCreatePoolTokenAccount]: {
-      name: 'Create Pool Token Account',
+      name: 'Meteora: Create Pool Token Account',
       packageId: PackageEnum.Meteora,
     },
     [Instructions.MeteoraCreatePoolTokenAccountWithSeed]: {
-      name: 'Create Pool Token Account with Seed',
+      name: 'Meteora: Create Pool Token Account with Seed',
       packageId: PackageEnum.Meteora,
     },
     /*
