@@ -47,12 +47,12 @@ const schema = yup.object().shape({
 const strategyOptions = [
   {
     name: 'Spot',
-    value: 0,
+    value: 6,
     description:
       'Provides a uniform distribution that is versatile and risk adjusted, suitable for any type of market and conditions. This is similar to setting a CLMM price range.',
   },
-  { name: 'Curve', value: 1 },
-  { name: 'Bid Ask', value: 2 },
+  { name: 'Curve', value: 7 },
+  { name: 'Bid Ask', value: 8 },
 ]
 
 const DLMMCreatePosition = ({
@@ -166,13 +166,13 @@ const DLMMCreatePosition = ({
       // Generate position keypair
       const positionKeypair = Keypair.generate()
 
-      console.log(form.strategy.value)
       // Create the position transaction
       const createPositionTx =
         await dlmmPool.initializePositionAndAddLiquidityByStrategy({
           positionPubKey: positionKeypair.publicKey,
           user: wallet?.publicKey,
           totalXAmount,
+          slippage: 0.01,
           totalYAmount,
           strategy: {
             maxBinId,
