@@ -52,77 +52,78 @@ const DLMMCreatePosition = ({
   });
 
 
-async function getInstruction(): Promise<UiInstruction> {
-
-  if (!form?.governedAccount?.governance?.account || !wallet?.publicKey || !connected) {
-    console.log('Validation failed or missing required data.');
-    return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
-  }
-
-  const positionKeypair = Keypair.generate();
-  const positionPubKey = positionKeypair.publicKey;
-  let serializedInstruction = '';
-  let additionalSerializedInstructions: string[] = [];
-
-  try {
-    console.log('Building liquidity instruction...');
-    const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
-    const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
-    await dlmmPool.refetchStates();
-    console.log(`DLMM Pool created and states refetched: ${dlmmPoolPk.toBase58()}`);
-
-
-    const activeBin = await dlmmPool.getActiveBin();
-    const TOTAL_RANGE_INTERVAL = 10; // 10 bins on each side of the active bin
-    const minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL;
-    const maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL;
-
-    console.log(`Active bin ID: ${activeBin.binId}, minBinId: ${minBinId}, maxBinId: ${maxBinId}`);
-
-    // Calculate totalXAmount and totalYAmount
-    const activeBinPricePerToken = dlmmPool.fromPricePerLamport(Number(activeBin.price));
-    const totalXAmount = new BN(form.tokenAmount);  // Use the token amount entered by the user
-    const totalYAmount = totalXAmount.mul(new BN(Number(activeBinPricePerToken)));
-
-    const createPositionTx =
-    await dlmmPool.initializePositionAndAddLiquidityByStrategy({
-      positionPubKey: positionPubKey,
-      user: form.governedAccount?.governance.pubkey,
-      totalXAmount,
-      totalYAmount,
-      strategy: {
-        maxBinId,
-        minBinId,
-        strategyType: form.strategy,
-      },
-    });
-
-    const txArray = Array.isArray(createPositionTx) ? createPositionTx : [createPositionTx];
-    if (txArray.length === 0) throw new Error('No transactions returned by create position.');
-    const primaryInstructions = txArray[0].instructions;
-    if (primaryInstructions.length === 0) throw new Error('No instructions in the create position transaction.');
-
-    serializedInstruction = serializeInstructionToBase64(primaryInstructions[0]);
-    if (primaryInstructions.length > 1) {
-      additionalSerializedInstructions = primaryInstructions.slice(1).map((ix: import('@solana/web3.js').TransactionInstruction) => serializeInstructionToBase64(ix));
+  const getInstruction = async (): Promise<UiInstruction> => {
+    if (!form?.governedAccount?.governance?.account || !wallet?.publicKey || !connected) {
+      console.log('Validation failed or missing required data.');
+      return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
     }
-
-  } catch (err: any) {
-    console.error('Error building create position instruction:', err);
-    setFormErrors((prev) => ({
-      ...prev,
-      general: 'Error building create position instruction',
-    }));
-    return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
-  }
-
-  return {
-    serializedInstruction,
-    additionalSerializedInstructions,
-    isValid: true,
-    governance: form?.governedAccount?.governance,
+  
+    const positionKeypair = Keypair.generate();
+    const positionPubKey = positionKeypair.publicKey;
+    let serializedInstruction = '';
+    let additionalSerializedInstructions: string[] = [];
+  
+    try {
+      console.log('Building liquidity instruction...');
+      const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
+      const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
+      await dlmmPool.refetchStates();
+      console.log(`DLMM Pool created and states refetched: ${dlmmPoolPk.toBase58()}`);
+  
+      const activeBin = await dlmmPool.getActiveBin();
+      const TOTAL_RANGE_INTERVAL = 10; // 10 bins on each side of the active bin
+      const minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL;
+      const maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL;
+  
+      console.log(`Active bin ID: ${activeBin.binId}, minBinId: ${minBinId}, maxBinId: ${maxBinId}`);
+  
+      // Calculate totalXAmount and totalYAmount
+      const activeBinPricePerToken = dlmmPool.fromPricePerLamport(Number(activeBin.price));
+      const totalXAmount = new BN(form.tokenAmount);  // Use the token amount entered by the user
+      const totalYAmount = totalXAmount.mul(new BN(Number(activeBinPricePerToken)));
+  
+      const createPositionTx = await dlmmPool.initializePositionAndAddLiquidityByStrategy({
+        positionPubKey: positionPubKey,
+        user: form.governedAccount?.governance.pubkey,
+        totalXAmount,
+        totalYAmount,
+        strategy: {
+          maxBinId,
+          minBinId,
+          strategyType: form.strategy,
+        },
+      });
+  
+      // Ensure txArray is properly formed
+      const txArray = Array.isArray(createPositionTx) ? createPositionTx : [createPositionTx];
+      if (txArray.length === 0) {
+        throw new Error('No transactions returned by create position.');
+      }
+  
+      const primaryInstructions = txArray[0].instructions;
+      if (primaryInstructions.length === 0) {
+        throw new Error('No instructions in the create position transaction.');
+      }
+ 
+  
+    } catch (err: any) {
+      console.error('Error building create position instruction:', err);
+      setFormErrors((prev) => ({
+        ...prev,
+        general: 'Error building create position instruction',
+      }));
+      return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
+    }
+  
+    // Return serialized instructions if valid
+    return {
+      serializedInstruction,
+      additionalSerializedInstructions,
+      isValid: true,
+      governance: form?.governedAccount?.governance,
+    };
   };
-}
+  
 
   
   
