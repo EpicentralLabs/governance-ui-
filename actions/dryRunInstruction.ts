@@ -45,6 +45,9 @@ export async function dryRunInstruction(
     })
   }
 
+  console.log('transaction')
+  console.log(transaction)
+
   const result = await connection.simulateTransaction(
     transaction,
     undefined,

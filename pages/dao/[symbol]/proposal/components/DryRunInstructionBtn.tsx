@@ -62,9 +62,9 @@ const DryRunInstructionBtn = ({
         prerequisiteInstructionsToRun,
         additionalInstructions?.map((x) =>
           getInstructionDataFromBase64(
-            typeof x === 'string' ? x : x.serializedInstruction
-          )
-        )
+            typeof x === 'string' ? x : x.serializedInstruction,
+          ),
+        ),
       )
       setResult(result)
       setIsOpen(true)

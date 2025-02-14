@@ -122,7 +122,8 @@ export interface ClawbackForm {
   holdupTime: number
 }
 
-export interface SendTokenCompactViewForm extends Omit<SplTokenTransferForm, 'amount' | 'destinationAccount'> {
+export interface SendTokenCompactViewForm
+  extends Omit<SplTokenTransferForm, 'amount' | 'destinationAccount'> {
   destinationAccount: string[]
   amount: (number | undefined)[]
   txDollarAmount: (string | undefined)[]
@@ -569,112 +570,114 @@ export interface DualFinanceVoteDepositForm {
 }
 
 export interface SymmetryCreateBasketForm {
-  governedAccount?: AssetAccount,
-  basketType: number,
-  basketName: string,
-  basketSymbol: string,
-  basketMetadataUrl: string,
+  governedAccount?: AssetAccount
+  basketType: number
+  basketName: string
+  basketSymbol: string
+  basketMetadataUrl: string
   basketComposition: {
-    name: string,
-    symbol: string,
-    token: PublicKey;
-    weight: number;
-  }[],
-  rebalanceThreshold: number,
-  rebalanceSlippageTolerance: number,
-  depositFee: number,
-  feeCollectorAddress:string,
-  liquidityProvision: boolean,
-  liquidityProvisionRange: number,
+    name: string
+    symbol: string
+    token: PublicKey
+    weight: number
+  }[]
+  rebalanceThreshold: number
+  rebalanceSlippageTolerance: number
+  depositFee: number
+  feeCollectorAddress: string
+  liquidityProvision: boolean
+  liquidityProvisionRange: number
 }
 
-
 export interface SymmetryEditBasketForm {
-  governedAccount?: AssetAccount,
-  basketAddress?: PublicKey,
-  basketType: number,
-  basketName: string,
-  basketSymbol: string,
-  basketMetadataUrl: string,
+  governedAccount?: AssetAccount
+  basketAddress?: PublicKey
+  basketType: number
+  basketName: string
+  basketSymbol: string
+  basketMetadataUrl: string
   basketComposition: {
-    name: string,
-    symbol: string,
-    token: PublicKey;
-    weight: number;
-  }[],
-  rebalanceThreshold: number,
-  rebalanceSlippageTolerance: number,
-  depositFee: number,
-  feeCollectorAddress:string,
-  liquidityProvision: boolean,
-  liquidityProvisionRange: number,
+    name: string
+    symbol: string
+    token: PublicKey
+    weight: number
+  }[]
+  rebalanceThreshold: number
+  rebalanceSlippageTolerance: number
+  depositFee: number
+  feeCollectorAddress: string
+  liquidityProvision: boolean
+  liquidityProvisionRange: number
 }
 
 export interface SymmetryDepositForm {
-  governedAccount?: AssetAccount,
-  basketAddress?: PublicKey,
-  depositToken?: PublicKey,
-  depositAmount: number,
+  governedAccount?: AssetAccount
+  basketAddress?: PublicKey
+  depositToken?: PublicKey
+  depositAmount: number
 }
 
 export interface SymmetryWithdrawForm {
-  governedAccount?: AssetAccount,
-  basketAddress?: PublicKey,
-  withdrawAmount: number,
+  governedAccount?: AssetAccount
+  basketAddress?: PublicKey
+  withdrawAmount: number
   withdrawType: number
 }
 
 export interface CreateMeteoraPoolForm {
-  poolType: number;
-  baseTokenMint: string;
-  quoteTokenMint: string;
-  fee: number;
-  governedAccount?: string;
+  poolType: number
+  baseTokenMint: string
+  quoteTokenMint: string
+  fee: number
+  governedAccount?: string
   governedTokenAccount?: {
     governance: {
-      account: string;
-    };
-  };
+      account: string
+    }
+  }
 }
 
-
+export interface MeteoraStrategy {
+  name: string
+  value: number
+  description: string
+}
 
 export interface MeteoraAddLiquidityForm {
-  governedAccount: AssetAccount | undefined;
-  dlmmPoolAddress: string;
-  positionPubkey:  AssetAccount | undefined;
-  quoteToken: string;
-  baseToken: string;
-  strategy: number;
+  governedAccount: AssetAccount | undefined
+  dlmmPoolAddress: string
+  positionPubkey: AssetAccount | undefined
+  quoteToken: string
+  baseToken: string
+  strategy: number
 }
 
 export interface MeteoraRemoveLiquidityForm {
-  governedAccount: AssetAccount | undefined;
-  dlmmPoolAddress: string;
-  positionPubkey: string;
-  removeAll: boolean;
+  governedAccount: AssetAccount | undefined
+  dlmmPoolAddress: string
+  positionPubkey: string
+  removeAll: boolean
 }
 
 export interface MeteoraClaimRewardsForm {
-  governedAccount: AssetAccount | undefined;
-  dlmmPoolAddress: string;
-  rewards: string;
+  governedAccount: AssetAccount | undefined
+  dlmmPoolAddress: string
+  rewards: string
 }
 
 export interface MeteoraCreatePositionForm {
-  governedAccount: AssetAccount | undefined;
-  dlmmPoolAddress: string;
-  positionPubkey: string;
-  baseTokenAmount: number;
-  quoteTokenAmount: number;
-  quoteToken: string;
-  baseToken: string;
-  strategy: number;
-  minPrice: number;
-  maxPrice: number;
-  numBins: number;
-  autoFill: boolean;
-  description: string;
-  binStep: number;
+  governedAccount: AssetAccount | undefined
+  dlmmPoolAddress: string
+  // positionPubkey: string;
+  baseTokenAmount: number
+  quoteTokenAmount: number
+  quoteToken: string
+  baseToken: string
+  strategy: MeteoraStrategy
+  minPrice: number
+  maxPrice: number
+  numBins: number
+  autoFill: boolean
+  description: string
+  binStep: number
 }
-
