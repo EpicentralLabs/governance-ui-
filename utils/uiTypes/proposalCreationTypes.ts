@@ -642,7 +642,7 @@ export interface CreateMeteoraPoolForm {
 export interface MeteoraAddLiquidityForm {
   governedAccount: AssetAccount | undefined;
   dlmmPoolAddress: string;
-  positionPubkey: string;
+  positionPubkey:  AssetAccount | undefined;
   quoteToken: string;
   baseToken: string;
   strategy: number;
@@ -665,8 +665,10 @@ export interface MeteoraCreatePositionForm {
   governedAccount: AssetAccount | undefined;
   dlmmPoolAddress: string;
   positionPubkey: string;
+  tokenAmount: number;
   quoteToken: string;
   baseToken: string;
   strategy: number;
+  response: string;
 }
 
