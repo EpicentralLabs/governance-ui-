@@ -101,7 +101,6 @@ const DLMMCreatePosition = ({
     maxPrice: 0,
     numBins: 69,
     autoFill: false,
-    // positionPubkey: '',
     description: '',
     binStep: 0,
   })
