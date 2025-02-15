@@ -1,3 +1,13 @@
+/**
+ * DLMMCreatePosition Component
+ *
+ * Handles the creation of a DLMM (Dynamic Liquidity Market Maker) position by gathering user input,
+ * validating the data, and generating the necessary Solana instructions.
+ * 
+ * Developed by the Epicentral Team.
+ * Contributors: @TheLazySol, @Tgcohce, @ZeroSums
+ * Special thanks to @dberget
+ */
 import React, { useContext, useEffect, useState } from 'react'
 import * as yup from 'yup'
 import BN from 'bn.js'
@@ -20,10 +30,8 @@ import { InstructionInputType } from '../inputInstructionType'
 import useWalletOnePointOh from '@hooks/useWalletOnePointOh'
 import useGovernanceAssets from '@hooks/useGovernanceAssets'
 import DLMM from '@meteora-ag/dlmm'
-import { toStrategyParameters } from '@meteora-ag/dlmm'
 import { useConnection } from '@solana/wallet-adapter-react'
 import { MeteoraCreatePositionForm } from '@utils/uiTypes/proposalCreationTypes'
-import { StrategyParameters } from '@meteora-ag/dlmm'
 
 const schema = yup.object().shape({
   governedAccount: yup.object().required('Governed account is required'),
@@ -54,7 +62,14 @@ const strategyOptions = [
   { name: 'Curve', value: 7 },
   { name: 'Bid Ask', value: 8 },
 ]
-
+/**
+ * DLMMCreatePosition Component
+ * 
+ * @param {Object} props - Component props
+ * @param {number} props.index - Index of the instruction
+ * @param {ProgramAccount<Governance> | null} props.governance - Governance account
+ * @returns {JSX.Element}
+ */
 const DLMMCreatePosition = ({
   index,
   governance,
@@ -90,7 +105,11 @@ const DLMMCreatePosition = ({
     description: '',
     binStep: 0,
   })
-
+ /**
+   * Fetches the instruction for creating a DLMM position.
+   * 
+   * @returns {Promise<UiInstruction>} Serialized instruction and metadata.
+   */
   const getInstruction = async (): Promise<UiInstruction> => {
     const isValid = await validateInstruction({ schema, form, setFormErrors })
     if (
@@ -109,8 +128,6 @@ const DLMMCreatePosition = ({
     try {
       const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress)
       const dlmmPool = await DLMM.create(connection, dlmmPoolPk)
-      // await dlmmPool.refetchStates()
-
       // Get active bin and calculate range
       const activeBin = await dlmmPool.getActiveBin()
 
@@ -204,10 +221,6 @@ const DLMMCreatePosition = ({
       if (primaryInstructions.length === 0) {
         throw new Error('No instructions in the create position transaction.')
       }
-
-      // Set the primary instruction as the first one
-      // const serializedInstruction = ''
-
       // Add any remaining instructions as additional instructions
       const additionalSerializedInstructions = primaryInstructions.map(
         (instruction) => serializeInstructionToBase64(instruction),
