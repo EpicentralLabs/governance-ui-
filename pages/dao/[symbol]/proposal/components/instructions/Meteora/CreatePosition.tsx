@@ -13,6 +13,7 @@ import {
   Keypair,
   Connection,
   ComputeBudgetProgram,
+  SystemProgram,
 } from '@solana/web3.js'
 import { NewProposalContext } from '../../../new'
 import InstructionForm, { InstructionInput } from '../FormCreator'
@@ -85,7 +86,7 @@ const DLMMCreatePosition = ({
     minPrice: 0,
     maxPrice: 0,
     numBins: 69,
-    autoFill: false,
+    autoFill: true,
     // positionPubkey: '',
     description: '',
     binStep: 0,
@@ -115,53 +116,42 @@ const DLMMCreatePosition = ({
       const activeBin = await dlmmPool.getActiveBin()
 
       // Calculate bin IDs based on prices
-      let minBinId: number, maxBinId: number
-
-      // Use binStep from form state instead of dlmmPool.state
-      const binStep = dlmmPool?.lbPair?.binStep
+      const binStep = form.binStep || dlmmPool?.lbPair?.binStep
 
       if (!binStep) {
         throw new Error('Bin step not available')
       }
 
-      if (form.autoFill) {
-        const TOTAL_RANGE_INTERVAL = 10
-        minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL
-        maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL
-      } else {
-        // Convert binStep from basis points to decimal
-        // binStep is in basis points (e.g., 25 = 0.25%)
-        const binStepDecimal = binStep / 10000
+      // Convert binStep from basis points to decimal
+      const binStepDecimal = binStep / 10000
 
-        // Calculate bin IDs using the correct formula
-        // log_base(price) where base is (1 + binStepDecimal)
-        minBinId = Math.floor(
-          Math.log(form.minPrice) / Math.log(1 + binStepDecimal)
+      // Calculate bin IDs using the correct formula
+      const minBinId = Math.floor(
+        Math.log(form.minPrice) / Math.log(1 + binStepDecimal)
+      )
+      const maxBinId = Math.ceil(
+        Math.log(form.maxPrice) / Math.log(1 + binStepDecimal)
+      )
+
+      // Calculate and update number of bins based on price range
+      const calculatedNumBins = maxBinId - minBinId + 1
+
+      // Update form with calculated number of bins
+      setForm((prev) => ({
+        ...prev,
+        numBins: calculatedNumBins,
+      }))
+
+      // Validate bin range
+      if (calculatedNumBins > 69) {
+        throw new Error(
+          'Price range too large - exceeds maximum allowed bins (69)'
         )
-        maxBinId = Math.ceil(
-          Math.log(form.maxPrice) / Math.log(1 + binStepDecimal)
-        )
-
-        // Calculate and update number of bins based on price range
-        const calculatedNumBins = maxBinId - minBinId + 1
-
-        // Update form with calculated number of bins
-        setForm((prev) => ({
-          ...prev,
-          numBins: calculatedNumBins,
-        }))
-
-        // Validate bin range
-        if (calculatedNumBins > 69) {
-          throw new Error(
-            'Price range too large - exceeds maximum allowed bins (69)'
-          )
-        }
       }
 
       // Get actual prices from bin IDs for validation
-      const minBinPrice = (1 + binStep / 10000) ** minBinId
-      const maxBinPrice = (1 + binStep / 10000) ** maxBinId
+      const minBinPrice = (1 + binStepDecimal) ** minBinId
+      const maxBinPrice = (1 + binStepDecimal) ** maxBinId
       console.log(`Price Range: ${minBinPrice} - ${maxBinPrice}`)
 
       // Convert amounts to BN directly
@@ -170,6 +160,25 @@ const DLMMCreatePosition = ({
 
       // Generate position keypair
       const positionKeypair = Keypair.generate()
+
+      // Declare filteredInstructions at the start
+      const filteredInstructions: any[] = []
+
+      // Check if the account already exists
+      const accountInfo = await connection.getAccountInfo(positionKeypair.publicKey)
+      if (!accountInfo) {
+        // Create account instruction
+        const createAccountIx = SystemProgram.createAccount({
+          fromPubkey: wallet.publicKey,
+          newAccountPubkey: positionKeypair.publicKey,
+          lamports: await connection.getMinimumBalanceForRentExemption(100),
+          space: 100,
+          programId: new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo'),
+        })
+
+        // Add the create account instruction to the list
+        filteredInstructions.push(createAccountIx)
+      }
 
       // Create the position transaction
       const createPositionTx =
@@ -186,36 +195,27 @@ const DLMMCreatePosition = ({
           },
         })
 
-      // Filter out compute budget program instructions, they get added later in the dryRun.
-      const filteredInstructions = createPositionTx.instructions.filter(
-        (ix) => !ix.programId.equals(ComputeBudgetProgram.programId),
+      // Filter and combine instructions
+      filteredInstructions.push(
+        ...createPositionTx.instructions.filter(
+          ix => !ix.programId.equals(ComputeBudgetProgram.programId)
+        )
       )
 
-      createPositionTx.instructions = filteredInstructions
-
-      const txArray = Array.isArray(createPositionTx)
-        ? createPositionTx
-        : [createPositionTx]
-      if (txArray.length === 0) {
-        throw new Error('No transactions returned by create position.')
+      if (filteredInstructions.length === 0) {
+        throw new Error('No instructions returned by create position.')
       }
 
-      const primaryInstructions = txArray[0].instructions
-      if (primaryInstructions.length === 0) {
-        throw new Error('No instructions in the create position transaction.')
-      }
-
-      // Set the primary instruction as the first one
-      // const serializedInstruction = ''
-
-      // Add any remaining instructions as additional instructions
-      const additionalSerializedInstructions = primaryInstructions.map(
+      // Serialize all instructions
+      const serializedInstructions = filteredInstructions.map(
         (instruction) => serializeInstructionToBase64(instruction),
       )
 
       return {
-        serializedInstruction: '',
-        additionalSerializedInstructions,
+        // First instruction becomes the primary
+        serializedInstruction: serializedInstructions[0],
+        // Remaining instructions become additional
+        additionalSerializedInstructions: serializedInstructions.slice(1),
         isValid: true,
         governance: form?.governedAccount?.governance,
         signers: [positionKeypair],
@@ -359,6 +359,46 @@ const DLMMCreatePosition = ({
 
     fetchPoolData()
   }, [form.dlmmPoolAddress])
+
+  useEffect(() => {
+    const validatePriceRange = async () => {
+      if (!form.dlmmPoolAddress || !form.minPrice || !form.maxPrice) return;
+
+      try {
+        const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
+        const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
+        const binStep = dlmmPool?.lbPair?.binStep;
+        
+        if (!binStep) return;
+
+        // Convert prices to bin IDs
+        const binStepDecimal = binStep / 10000;
+        const minBinId = Math.floor(Math.log(form.minPrice) / Math.log(1 + binStepDecimal));
+        const maxBinId = Math.ceil(Math.log(form.maxPrice) / Math.log(1 + binStepDecimal));
+        
+        // Calculate number of bins
+        const numBins = maxBinId - minBinId + 1;
+        
+        // Update form with calculated bins
+        setForm(prev => ({
+          ...prev,
+          numBins: numBins
+        }));
+
+        // Validate bin range
+        if (numBins > 69) {
+          setFormErrors(prev => ({
+            ...prev,
+            priceRange: 'Price range too large. Maximum 69 bins allowed.'
+          }));
+        }
+      } catch (error) {
+        console.error('Error validating price range:', error);
+      }
+    };
+
+    validatePriceRange();
+  }, [form.dlmmPoolAddress, form.minPrice, form.maxPrice, connection]);
 
   return (
     <InstructionForm
