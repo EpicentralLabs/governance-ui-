@@ -654,8 +654,10 @@ export interface MeteoraAddLiquidityForm {
 
 export interface MeteoraRemoveLiquidityForm {
   governedAccount: AssetAccount | undefined
+  positionPubkey: PublicKey | undefined;
+  binIds: number[]
+  liquiditiesBpsToRemove: number[]
   dlmmPoolAddress: string
-  positionPubkey: string
   removeAll: boolean
 }
 
