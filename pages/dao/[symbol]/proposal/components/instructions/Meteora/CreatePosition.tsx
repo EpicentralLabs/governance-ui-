@@ -125,15 +125,21 @@ const DLMMCreatePosition = ({
       }
 
       if (form.autoFill) {
-        const TOTAL_RANGE_INTERVAL = 25
+        const TOTAL_RANGE_INTERVAL = 10
         minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL
         maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL
       } else {
+        // Convert binStep from basis points to decimal
+        // binStep is in basis points (e.g., 25 = 0.25%)
+        const binStepDecimal = binStep / 10000
+
+        // Calculate bin IDs using the correct formula
+        // log_base(price) where base is (1 + binStepDecimal)
         minBinId = Math.floor(
-          Math.log(form.minPrice) / Math.log(1 + binStep / 10000),
+          Math.log(form.minPrice) / Math.log(1 + binStepDecimal)
         )
         maxBinId = Math.ceil(
-          Math.log(form.maxPrice) / Math.log(1 + binStep / 10000),
+          Math.log(form.maxPrice) / Math.log(1 + binStepDecimal)
         )
 
         // Calculate and update number of bins based on price range
@@ -145,16 +151,15 @@ const DLMMCreatePosition = ({
           numBins: calculatedNumBins,
         }))
 
-        // Validate bin range (can keep this as a safety check)
+        // Validate bin range
         if (calculatedNumBins > 69) {
-          // Max bins allowed
           throw new Error(
-            'Price range too large - exceeds maximum allowed bins (69)',
+            'Price range too large - exceeds maximum allowed bins (69)'
           )
         }
       }
 
-      // Get actual prices from bin IDs for validation using the correct bin step
+      // Get actual prices from bin IDs for validation
       const minBinPrice = (1 + binStep / 10000) ** minBinId
       const maxBinPrice = (1 + binStep / 10000) ** maxBinId
       console.log(`Price Range: ${minBinPrice} - ${maxBinPrice}`)
