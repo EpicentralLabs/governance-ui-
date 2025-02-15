@@ -40,12 +40,12 @@ const DLMMClaimAllRewards = ({
     governedAccount: undefined,
     dlmmPoolAddress: '',
     rewards: '',
+    positions: [],
   });
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const { handleSetInstructions } = useContext(NewProposalContext);
   const shouldBeGoverned = !!(index !== 0 && governance);
 
-  // Validation schema for the form data.
   const schema = yup.object().shape({
     governedAccount: yup.object().nullable().required('Governed account is required'),
     dlmmPoolAddress: yup
@@ -59,50 +59,99 @@ const DLMMClaimAllRewards = ({
           return false;
         }
       }),
-    rewards: yup.string(),
+    selectedPosition: yup.string().required('You must select a position'),
   });
+  const [positions, setPositions] = useState<string[]>([]);
 
-  /**
-   * Fetches and serializes the instruction for claiming all rewards from the DLMM pool.
-   * Validates the form data and connects to the blockchain before submitting the transaction.
-   * 
-   * @returns {Promise<UiInstruction>} The instruction for claiming all rewards, serialized and ready for submission.
-   */
+  // Fetch user positions when DLMM Pool Address is entered
+  useEffect(() => {
+    const fetchUserPositions = async () => {
+      if (!form.dlmmPoolAddress || !form.governedAccount?.governance?.pubkey) return;
+
+      try {
+        const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
+        const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
+        
+        const { userPositions } = await dlmmPool.getPositionsByUserAndLbPair(
+          new PublicKey(form.governedAccount.governance.pubkey)
+        );
+
+        if (!userPositions || userPositions.length === 0) {
+          throw new Error('No positions found for this owner.');
+        }
+
+        const binData = userPositions[0]?.positionData?.positionBinData || [];
+        const positionsList = binData.map((bin: any) => bin.position);
+
+        setPositions(positionsList);
+      } catch (err: any) {
+        console.error('Error fetching user positions:', err.message);
+        setPositions([]); // Reset positions on error
+      }
+    };
+
+    fetchUserPositions();
+  }, [form.dlmmPoolAddress, form.governedAccount, connection]);
+
   const getInstruction = async (): Promise<UiInstruction> => {
     const isValid = await validateInstruction({ schema, form, setFormErrors });
     if (!isValid || !form?.governedAccount?.governance?.account || !wallet?.publicKey) {
       return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
     }
     if (!connected) {
-      return { serializedInstruction: '', isValid: false, governance: form.governedAccount?.governance };
+      return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
     }
-
-    let serializedInstruction = '';
+  
+    if (!form.dlmmPoolAddress) {
+      console.error('DLMM Pool Address is missing');
+      return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
+    }
+  
     const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
+  
     try {
       const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
       await dlmmPool.refetchStates();
-
-      const claimTxs = await dlmmPool.claimAllRewards({ owner: wallet.publicKey, positions: [] });
+  
+      // Fetch positions
+      const { userPositions } = await dlmmPool.getPositionsByUserAndLbPair(
+        form?.governedAccount?.governance?.pubkey
+      );
+  
+      if (!userPositions || userPositions.length === 0) {
+        throw new Error('No positions found for this owner.');
+      }
+  
+      // Extract position public keys
+      const positions = userPositions.map((position) => position);
+  
+      console.log('Positions:', positions);
+  
+      // Claim rewards
+      const claimTxs = await dlmmPool.claimAllRewards({ owner: wallet.publicKey, positions: positions });
+  
       if (claimTxs.length === 0) {
         throw new Error('No transactions returned by claimAllRewards');
       }
+  
       const instructions = claimTxs[0].instructions;
       if (instructions.length === 0) {
         throw new Error('No instructions in the claimAllRewards transaction.');
       }
-      serializedInstruction = serializeInstructionToBase64(instructions[0]);
+  
+      const serializedInstruction = serializeInstructionToBase64(instructions[0]);
+  
+      return {
+        serializedInstruction,
+        isValid: true,
+        governance: form?.governedAccount?.governance,
+      };
     } catch (err: any) {
-      console.error('Error building claimAllRewards instruction:', err);
+      console.error('Error building claimAllRewards instruction:', err.message);
       return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
     }
-
-    return {
-      serializedInstruction,
-      isValid: true,
-      governance: form?.governedAccount?.governance,
-    };
   };
+  
 
   /**
    * Form inputs that allow the user to configure the rewards claiming operation.
@@ -132,6 +181,14 @@ const DLMMClaimAllRewards = ({
       type: InstructionInputType.INPUT,
       inputType: 'text',
     },
+     {
+          label: 'Positions',
+          initialValue: form.positions,
+          name: 'positions',
+          type: InstructionInputType.SELECT,
+          inputType: 'select',
+          options: positions.map((position) => ({ value: position, label: position })),
+        },
   ];
 
   useEffect(() => {
