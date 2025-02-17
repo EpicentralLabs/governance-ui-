@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react';
 import * as yup from 'yup';
-import { Governance, ProgramAccount, serializeInstructionToBase64 } from '@solana/spl-governance';
+import { Governance, ProgramAccount } from '@solana/spl-governance';
 import { validateInstruction } from '@utils/instructionTools';
 import { UiInstruction } from '@utils/uiTypes/proposalCreationTypes';
 import { PublicKey } from '@solana/web3.js';
@@ -12,17 +12,12 @@ import useWalletOnePointOh from '@hooks/useWalletOnePointOh';
 import useGovernanceAssets from '@hooks/useGovernanceAssets';
 import DLMM from '@meteora-ag/dlmm';
 import { useConnection } from '@solana/wallet-adapter-react';
+import BN from 'bn.js';
 import { MeteoraClaimRewardsForm } from '@utils/uiTypes/proposalCreationTypes';
+import { fetchPoolData } from '@utils/Meteora/fetchPoolData';
 
 /**
  * Component to manage the claiming of rewards from a DLMM pool in a governance proposal.
- * It allows the user to submit instructions for claiming rewards, and validates the form data before submission.
- * 
- * @param {object} props - The component properties.
- * @param {number} props.index - The index of the component in the parent container.
- * @param {ProgramAccount<Governance> | null} props.governance - The governance object that is associated with the proposal.
- * 
- * @returns {JSX.Element} The rendered component containing the instruction form for claiming rewards.
  */
 const DLMMClaimAllRewards = ({
   index,
@@ -40,12 +35,16 @@ const DLMMClaimAllRewards = ({
     governedAccount: undefined,
     dlmmPoolAddress: '',
     rewards: '',
-    positions: [],
+    positions: '',
+    positions2: '',
   });
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const { handleSetInstructions } = useContext(NewProposalContext);
   const shouldBeGoverned = !!(index !== 0 && governance);
 
+  const [positionString, setPositions] = useState<string>("");
+  const [positionString2] = useState<string>("");
+  const [totalRewards, setTotalRewards] = useState<BN>(new BN(0));
   const schema = yup.object().shape({
     governedAccount: yup.object().nullable().required('Governed account is required'),
     dlmmPoolAddress: yup
@@ -61,88 +60,188 @@ const DLMMClaimAllRewards = ({
       }),
     selectedPosition: yup.string().required('You must select a position'),
   });
-  const [positions, setPositions] = useState<string[]>([]);
 
-  // Fetch user positions when DLMM Pool Address is entered
+  // Fetch user positions when the DLMM pool address or wallet changes
   useEffect(() => {
     const fetchUserPositions = async () => {
-      if (!form.dlmmPoolAddress || !form.governedAccount?.governance?.pubkey) return;
-
+      if (!form.dlmmPoolAddress || !form.governedAccount?.governance?.pubkey || !wallet?.publicKey) return;
+  
+      console.log('Fetching user positions for pool address:', form.dlmmPoolAddress);
+      const startTime = Date.now();
+      console.log('Start time:', startTime);
+  
       try {
         const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
         const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
-        
-        const { userPositions } = await dlmmPool.getPositionsByUserAndLbPair(
-          new PublicKey(form.governedAccount.governance.pubkey)
-        );
-
+  
+        // Fetch positions for the user's wallet
+        const { userPositions } = await dlmmPool.getPositionsByUserAndLbPair(wallet.publicKey);
+        console.log("Full userPositions response:", JSON.stringify(userPositions, null, 2));
+  
         if (!userPositions || userPositions.length === 0) {
-          throw new Error('No positions found for this owner.');
+          console.log('No valid positions found.');
+          setForm((prevForm) => ({
+            ...prevForm,
+            positions: "", 
+          }));
+          setFormErrors((prevErrors) => ({
+            ...prevErrors,
+            positions: 'No valid positions found, please check your pool address.',
+          }));
+          return;
         }
+  
+        // Use the first position if available
+        const position = userPositions[0];
+        const rewardOne = new BN(position.positionData.rewardOne || 0);
+        const rewardTwo = new BN(position.positionData.rewardTwo || 0);
+        const totalRewards = rewardOne.add(rewardTwo);
+    
+        console.log('Total Rewards:', totalRewards.toString());
+  
+        // Fetch pool data to append to the reward string
+        const poolData = await fetchPoolData(form.dlmmPoolAddress); 
+        const rewardString = `${poolData.baseToken} - ${totalRewards.toString()} | ${poolData.quoteToken} - ${totalRewards.toString()}`;
+        const positionString = `${position.publicKey.toString().slice(0, 4)}...${position.publicKey.toString().slice(-4)}`;
+        
+        // Update the form state with rewards and position string
+        setForm((prevForm) => ({ ...prevForm, rewards: rewardString }));
+        setForm((prevForm) => ({ ...prevForm, positions: positionString || "" }));
+        setForm((prevForm) => ({ ...prevForm, positions2: positionString || "" }));
 
-        const binData = userPositions[0]?.positionData?.positionBinData || [];
-        const positionsList = binData.map((bin: any) => bin.position);
-
-        setPositions(positionsList);
+        // Set the position public key in the positions state
+        setPositions(position.publicKey.toString());
+  
+        const duration = Date.now() - startTime + 'ms';
+        console.log('Time to fetch user positions:', duration);
+  
       } catch (err: any) {
         console.error('Error fetching user positions:', err.message);
-        setPositions([]); // Reset positions on error
+        setPositions(""); // Set to empty string on error
       }
     };
-
+  
     fetchUserPositions();
-  }, [form.dlmmPoolAddress, form.governedAccount, connection]);
+  }, [form.dlmmPoolAddress, form.governedAccount, wallet, connection]);
+  
+  
 
+// Fetch position data for each position
+const fetchPositionData = async (dlmmPool: any, position: string) => {
+  console.log('Fetching position data for:', position);
+
+  // Assuming position is a publicKey string, find the corresponding rewardInfo
+  const positionData = dlmmPool.lbPair.rewardInfos.find((rewardInfo: any) => {
+    return rewardInfo.mint.toBase58() === position; // Match the publicKey with mint
+  });
+
+  if (!positionData) {
+    console.error('Position data not found for:', position);
+    throw new Error('Position data not found');
+  }
+
+  console.log('Position Data:', positionData);
+
+  // Convert the reward values from BN (big number) to integers
+  const rewardOne = new BN(positionData.rewardOne || 0);
+  const rewardTwo = new BN(positionData.rewardTwo || 0);
+  console.log('Reward One:', rewardOne.toString());
+  console.log('Reward Two:', rewardTwo.toString());
+
+  const totalRewards = rewardOne.add(rewardTwo);
+  console.log('Total Rewards:', totalRewards.toString());
+
+  // Return the position data along with calculated rewards
+  return {
+    totalXAmount: positionData.totalXAmount || '0',
+    totalYAmount: positionData.totalYAmount || '0',
+    positionBinData: positionData.positionBinData || [],
+    lastUpdatedAt: new BN(Date.now()), // Timestamp for when the data was fetched
+    upperBinId: positionData.upperBinId || 0,
+    lowerBinId: positionData.lowerBinId || 0,
+    feeX: new BN(positionData.feeX || 0),
+    feeY: new BN(positionData.feeY || 0),
+    binX: positionData.binX || '0',
+    binY: positionData.binY || '0',
+    binId: positionData.binId || '0',
+    rewardOne, // Include reward values as BN
+    rewardTwo,
+    feeOwner: wallet?.publicKey || new PublicKey(''), // Fee owner (wallet public key)
+    totalClaimedFeeXAmount: new BN(positionData.totalClaimedFeeXAmount || 0),
+    totalClaimedFeeYAmount: new BN(positionData.totalClaimedFeeYAmount || 0),
+    totalRewards: totalRewards.toString(), // Total rewards calculated from rewardOne and rewardTwo
+  };
+};
+
+
+  // Handle the instruction for claiming rewards
   const getInstruction = async (): Promise<UiInstruction> => {
+    console.log('Validating instruction with form:', form);
+
     const isValid = await validateInstruction({ schema, form, setFormErrors });
     if (!isValid || !form?.governedAccount?.governance?.account || !wallet?.publicKey) {
+      console.log('Invalid instruction or missing required data.');
       return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
     }
+
     if (!connected) {
+      console.log('Wallet is not connected.');
       return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
     }
-  
-    if (!form.dlmmPoolAddress) {
-      console.error('DLMM Pool Address is missing');
+
+    const { positions } = form;
+    if (!positions || positions.length === 0) {
+      console.error('No position selected.');
       return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
     }
-  
-    const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
-  
+
     try {
+      const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
       const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
       await dlmmPool.refetchStates();
-  
-      // Fetch positions
-      const { userPositions } = await dlmmPool.getPositionsByUserAndLbPair(
-        form?.governedAccount?.governance?.pubkey
+
+      console.log('DLMM Pool for claiming rewards:', dlmmPool);
+
+      // Fetch position data for each position selected
+      const positionDataPromises = positions.map(async (position) => fetchPositionData(dlmmPool, position));
+      const positionData = await Promise.all(positionDataPromises);
+      console.log('Fetched position data:', positionData);
+
+      // Calculate total rewards (rewardOne + rewardTwo)
+      const totalRewards = positionData.reduce(
+        (total, data) => total.add(new BN(data.rewardOne)).add(new BN(data.rewardTwo)),
+        new BN(0)
       );
-  
-      if (!userPositions || userPositions.length === 0) {
-        throw new Error('No positions found for this owner.');
-      }
-  
-      // Extract position public keys
-      const positions = userPositions.map((position) => position);
-  
-      console.log('Positions:', positions);
-  
-      // Claim rewards
-      const claimTxs = await dlmmPool.claimAllRewards({ owner: wallet.publicKey, positions: positions });
-  
+      console.log('Total rewards:', totalRewards.toString());
+
+      // Update rewards field in the form
+      setForm((prevForm) => ({ ...prevForm, rewards: totalRewards.toString() }));
+
+      // Claim rewards for all positions
+      const claimTxs = await dlmmPool.claimAllRewards({
+        owner: wallet.publicKey,
+        positions: positionData.map((data, idx) => ({
+          publicKey: new PublicKey(positions[idx]),
+          positionData: data,
+          version: 1,
+        })),
+      });
+
+      console.log('Claim transactions:', claimTxs);
+
       if (claimTxs.length === 0) {
         throw new Error('No transactions returned by claimAllRewards');
       }
-  
+
       const instructions = claimTxs[0].instructions;
       if (instructions.length === 0) {
         throw new Error('No instructions in the claimAllRewards transaction.');
       }
-  
-      const serializedInstruction = serializeInstructionToBase64(instructions[0]);
-  
+
+      console.log('Claim instruction:', instructions[0]);
+
       return {
-        serializedInstruction,
+        serializedInstruction: '',
         isValid: true,
         governance: form?.governedAccount?.governance,
       };
@@ -151,12 +250,7 @@ const DLMMClaimAllRewards = ({
       return { serializedInstruction: '', isValid: false, governance: form?.governedAccount?.governance };
     }
   };
-  
 
-  /**
-   * Form inputs that allow the user to configure the rewards claiming operation.
-   * Includes input fields for the governed account, DLMM pool address, and rewards amount.
-   */
   const inputs: InstructionInput[] = [
     {
       label: 'Governance',
@@ -181,14 +275,20 @@ const DLMMClaimAllRewards = ({
       type: InstructionInputType.INPUT,
       inputType: 'text',
     },
-     {
-          label: 'Positions',
-          initialValue: form.positions,
-          name: 'positions',
-          type: InstructionInputType.SELECT,
-          inputType: 'select',
-          options: positions.map((position) => ({ value: position, label: position })),
-        },
+    // {
+    //   label: 'Positions',
+    //   initialValue: form.positions,
+    //   name: 'positions',
+    //   type: InstructionInputType.TEXTAREA,
+    //   inputType: 'text',
+    // },
+    {
+      label: 'Positions',
+      initialValue: form.positions2,
+      name: 'positions2',
+      type: InstructionInputType.INPUT,
+    }
+    
   ];
 
   useEffect(() => {
