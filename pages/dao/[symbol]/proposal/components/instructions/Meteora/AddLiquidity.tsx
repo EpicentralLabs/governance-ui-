@@ -124,6 +124,11 @@ const DLMMAddLiquidity = ({
 
       console.log(`Amounts calculated: quoteTokenAmount = ${quoteTokenAmount.toString()}, baseTokenAmount = ${baseTokenAmount.toString()}`);
 
+      // Ensure positionPubkey is defined and valid
+      if (!form.positionPubkey || typeof form.positionPubkey !== 'string') {
+        throw new Error('Position Pubkey is required and must be a valid string');
+      }
+
       const positionPk = new PublicKey(form.positionPubkey);
 
       // Define strategy parameters based on the selected strategy

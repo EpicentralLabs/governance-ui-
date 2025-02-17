@@ -219,6 +219,7 @@ const DLMMCreatePosition = ({
         isValid: true,
         governance: form?.governedAccount?.governance,
         signers: [positionKeypair],
+        chunkBy: 2,
       }
     } catch (err) {
       console.error('Error building create position instruction:', err)

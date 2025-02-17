@@ -646,7 +646,7 @@ export interface MeteoraStrategy {
 export interface MeteoraAddLiquidityForm {
   governedAccount: AssetAccount | undefined
   dlmmPoolAddress: string
-  positionPubkey: AssetAccount | undefined
+  positionPubkey: string
   quoteToken: string
   baseToken: string
   strategy: number
