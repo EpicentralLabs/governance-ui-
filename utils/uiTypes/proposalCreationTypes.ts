@@ -665,12 +665,14 @@ export interface MeteoraClaimRewardsForm {
   governedAccount: AssetAccount | undefined
   dlmmPoolAddress: string
   rewards: string
+  positions: string;
+  positions2: string;
+
 }
 
 export interface MeteoraCreatePositionForm {
   governedAccount: AssetAccount | undefined
   dlmmPoolAddress: string
-  // positionPubkey: string;
   baseTokenAmount: number
   quoteTokenAmount: number
   quoteToken: string
