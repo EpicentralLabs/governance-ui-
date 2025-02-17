@@ -34,7 +34,17 @@ import { useConnection } from '@solana/wallet-adapter-react'
 import { MeteoraCreatePositionForm } from '@utils/uiTypes/proposalCreationTypes'
 const schema = yup.object().shape({
   governedAccount: yup.object().required('Governed account is required'),
-  dlmmPoolAddress: yup.string().required('DLMM pool address is required'),
+dlmmPoolAddress: yup
+      .string()
+      .required('DLMM pool address is required')
+      .test('is-pubkey', 'Invalid pool address', (val) => {
+        try {
+          new PublicKey(val || '');
+          return true;
+        } catch {
+          return false;
+        }
+      }),
   baseToken: yup.string().required('Base token is required'),
   baseTokenAmount: yup
     .number()
