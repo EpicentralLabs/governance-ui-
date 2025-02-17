@@ -7,7 +7,7 @@
  * Developed by the Epicentral Team.
  * Contributors: @TheLazySol, @Tgcohce, @ZeroSums
  * Special thanks to @dberget
- */
+*/
 import React, { useContext, useEffect, useState } from 'react'
 import * as yup from 'yup'
 import BN from 'bn.js'
@@ -337,9 +337,10 @@ const DLMMCreatePosition = ({
   }, [form, handleSetInstructions, index])
 
   useEffect(() => {
-    const fetchPoolData = async () => {
+`    TODO: Use  '@utils/Meteora/fetchPoolData' instead  `    
+      const fetchPoolData = async () => {
       if (!form.dlmmPoolAddress) return
-
+      
       try {
         const uri = `https://dlmm-api.meteora.ag/pair/${form.dlmmPoolAddress}`
         const response = await fetch(uri)
