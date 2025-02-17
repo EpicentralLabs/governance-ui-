@@ -645,34 +645,7 @@ export default function useGovernanceAssets() {
       name: 'Meteora: Claim Rewards',
       packageId: PackageEnum.Meteora,
     },
-    // [Instructions.MeteoraSwap]: {
-    //   name: 'Meteora: Swap',
-    //   packageId: PackageEnum.Meteora,
-    // },
-    // [Instructions.MeteoraCreatePoolToken]: {
-    //   name: 'Meteora: Create Pool Token',
-    //   packageId: PackageEnum.Meteora,
-    // },
-    // [Instructions.MeteoraDeposit]: {
-    //   name: 'Meteora: Deposit',
-    //   packageId: PackageEnum.Meteora,
-    // },
-    // [Instructions.MeteoraWithdraw]: {
-    //   name: 'Meteora: Withdraw',
-    //   packageId: PackageEnum.Meteora,
-    // },
-    // [Instructions.MeteoraSwapToken]: {
-    //   name: 'Meteora: Swap Token',
-    //   packageId: PackageEnum.Meteora,
-    // },
-    // [Instructions.MeteoraCreatePoolTokenAccount]: {
-    //   name: 'Meteora: Create Pool Token Account',
-    //   packageId: PackageEnum.Meteora,
-    // },
-    // [Instructions.MeteoraCreatePoolTokenAccountWithSeed]: {
-    //   name: 'Meteora: Create Pool Token Account with Seed',
-    //   packageId: PackageEnum.Meteora,
-    // },
+
     /*
       ██████  ███████ ██    ██  ███████ ██ ███    ██  █████  ███    ██  ██████ ███████
       ██   ██ ██       ██  ██   ██      ██ ████   ██ ██   ██ ████   ██ ██      ██     
