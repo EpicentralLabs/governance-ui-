@@ -32,7 +32,6 @@ import useGovernanceAssets from '@hooks/useGovernanceAssets'
 import DLMM from '@meteora-ag/dlmm'
 import { useConnection } from '@solana/wallet-adapter-react'
 import { MeteoraCreatePositionForm } from '@utils/uiTypes/proposalCreationTypes'
-
 const schema = yup.object().shape({
   governedAccount: yup.object().required('Governed account is required'),
   dlmmPoolAddress: yup.string().required('DLMM pool address is required'),
@@ -231,6 +230,7 @@ const DLMMCreatePosition = ({
         isValid: true,
         governance: form?.governedAccount?.governance,
         signers: [positionKeypair],
+        chunkBy: 2,
       }
     } catch (err) {
       console.error('Error building create position instruction:', err)
@@ -242,6 +242,7 @@ const DLMMCreatePosition = ({
         serializedInstruction: '',
         isValid: false,
         governance: form?.governedAccount?.governance,
+        chunkBy: 1,
       }
     }
   }
