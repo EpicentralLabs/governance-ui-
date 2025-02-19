@@ -159,9 +159,12 @@ const DLMMCreatePosition = ({
       const totalYAmount = new BN(form.quoteTokenAmount)
 
       // Generate position keypair
+      const signers: Keypair[] = []
       const positionKeypair = Keypair.generate()
+      signers.push(positionKeypair)
 
-      // Declare filteredInstructions at the start
+      // Declare prerequisiteInstructions and filteredInstructions at the start
+      const prerequisiteInstructions: any[] = []
       const filteredInstructions: any[] = []
 
       // Check if the account already exists
@@ -176,8 +179,8 @@ const DLMMCreatePosition = ({
           programId: new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo'),
         })
 
-        // Add the create account instruction to the list
-        filteredInstructions.push(createAccountIx)
+        // Add the create account instruction to the prerequisite list
+        prerequisiteInstructions.push(createAccountIx)
       }
 
       // Create the position transaction
@@ -218,8 +221,9 @@ const DLMMCreatePosition = ({
         additionalSerializedInstructions: serializedInstructions.slice(1),
         isValid: true,
         governance: form?.governedAccount?.governance,
-        signers: [positionKeypair],
-        chunkBy: 2,
+        prerequisiteInstructions,
+        prerequisiteInstructionsSigners: signers,
+        chunkBy: 1,
       }
     } catch (err) {
       console.error('Error building create position instruction:', err)
