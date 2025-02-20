@@ -86,7 +86,6 @@ const DLMMCreatePosition = ({
     maxPrice: 0,
     numBins: 69,
     autoFill: false,
-    // positionPubkey: '',
     description: '',
     binStep: 0,
   })
@@ -130,10 +129,9 @@ const DLMMCreatePosition = ({
         maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL
       } else {
         // Convert binStep from basis points to decimal
-        // binStep is in basis points (e.g., 25 = 0.25%)
         const binStepDecimal = binStep / 10000
 
-        // Calculate bin IDs using the correct formula
+        // Calculate bin IDs using the correct formula:
         // log_base(price) where base is (1 + binStepDecimal)
         minBinId = Math.floor(
           Math.log(form.minPrice) / Math.log(1 + binStepDecimal)
@@ -171,11 +169,18 @@ const DLMMCreatePosition = ({
       // Generate position keypair
       const positionKeypair = Keypair.generate()
 
-      // Create the position transaction
+      // Extract the token account owner (treasury wallet) from the governed account
+      const treasuryOwner =
+        form.governedAccount.extensions.token?.account.owner
+      if (!treasuryOwner) {
+        throw new Error('Token account owner is not defined on the governed account.')
+      }
+
+      // Create the position transaction using the token account owner
       const createPositionTx =
         await dlmmPool.initializePositionAndAddLiquidityByStrategy({
           positionPubKey: positionKeypair.publicKey,
-          user: wallet?.publicKey,
+          user: treasuryOwner,
           totalXAmount,
           slippage: 5,
           totalYAmount,
@@ -190,7 +195,6 @@ const DLMMCreatePosition = ({
       const filteredInstructions = createPositionTx.instructions.filter(
         (ix) => !ix.programId.equals(ComputeBudgetProgram.programId),
       )
-
       createPositionTx.instructions = filteredInstructions
 
       const txArray = Array.isArray(createPositionTx)
@@ -205,12 +209,9 @@ const DLMMCreatePosition = ({
         throw new Error('No instructions in the create position transaction.')
       }
 
-      // Set the primary instruction as the first one
-      // const serializedInstruction = ''
-
-      // Add any remaining instructions as additional instructions
+      // Serialize any remaining instructions
       const additionalSerializedInstructions = primaryInstructions.map(
-        (instruction) => serializeInstructionToBase64(instruction),
+        (instruction) => serializeInstructionToBase64(instruction)
       )
 
       return {
@@ -220,7 +221,7 @@ const DLMMCreatePosition = ({
         governance: form?.governedAccount?.governance,
         signers: [positionKeypair],
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error building create position instruction:', err)
       setFormErrors((prev) => ({
         ...prev,
@@ -319,7 +320,7 @@ const DLMMCreatePosition = ({
   useEffect(() => {
     handleSetInstructions(
       { governedAccount: form.governedAccount?.governance, getInstruction },
-      index,
+      index
     )
   }, [form, handleSetInstructions, index])
 
@@ -350,7 +351,7 @@ const DLMMCreatePosition = ({
         }))
 
         console.log(
-          `Updated pool data - baseToken: ${baseToken}, quoteToken: ${quoteToken}, binStep: ${binStep}`,
+          `Updated pool data - baseToken: ${baseToken}, quoteToken: ${quoteToken}, binStep: ${binStep}`
         )
       } catch (error) {
         console.error('Error fetching pool data:', error)
