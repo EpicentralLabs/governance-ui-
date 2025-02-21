@@ -403,15 +403,8 @@ export enum Instructions {
   MeteoraAddLiquidity,
   MeteoraRemoveLiquidity,
   MeteoraClaimRewards,
-  CreateDLMM,
   MeteoraCreatePosition,
-  MeteoraCreatePoolToken,
-  MeteoraCreatePoolTokenAccount,
-  MeteoraCreatePoolTokenAccountWithSeed,
-  MeteoraSwap,
-  MeteoraSwapToken,
-  MeteoraDeposit,
-  MeteoraWithdraw,
+  MeteoraClosePosition,
 }
 
 export interface ComponentInstructionData {
@@ -665,4 +658,10 @@ export interface MeteoraCreatePositionForm {
   strategy: MeteoraStrategy
   minPrice: number
   maxPrice: number
+}
+
+export interface MeteoraClosePositionForm {
+  governedAccount: AssetAccount | undefined
+  positionPubkey: PublicKey | undefined
+  dlmmPoolAddress: string
 }

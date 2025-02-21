@@ -625,12 +625,12 @@ export default function useGovernanceAssets() {
       */ 
 
 
-    [Instructions.CreateDLMM]: {
-      name: 'Meteora: Create DLMM Pool', 
-      packageId: PackageEnum.Meteora,
-    },
     [Instructions.MeteoraCreatePosition]: {
       name: 'Meteora: Create Position',
+      packageId: PackageEnum.Meteora,
+    },
+    [Instructions.MeteoraClosePosition]: {
+      name: 'Meteora: Close Position',
       packageId: PackageEnum.Meteora,
     },
     [Instructions.MeteoraAddLiquidity]: {

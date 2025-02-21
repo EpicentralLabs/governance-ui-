@@ -18,6 +18,7 @@ import {
 // SDK & Program Imports
 import { toStrategyParameters } from '@meteora-ag/dlmm'
 import DLMM from '@meteora-ag/dlmm'
+import { BN as AnchorBN } from '@coral-xyz/anchor'
 
 // Hooks
 import { NewProposalContext } from '../../../new'
@@ -45,6 +46,7 @@ interface MeteoraCreatePositionForm {
   strategy: MeteoraStrategy
   minPrice: number
   maxPrice: number
+  slippage: number
   baseToken?: string
   quoteToken?: string
   binStep?: number
@@ -62,8 +64,7 @@ interface DLMMPair {
 interface DLMMPairPool {
   address: string
   name: string
-  tvl: number
-  volume24h: number
+  dailyBaseApy: string
 }
 
 interface UiInstruction {
@@ -120,6 +121,7 @@ const DLMMCreatePosition = ({
     dlmmPoolAddress: '',
     baseTokenAmount: 0,
     quoteTokenAmount: 0,
+    slippage: 2,
     strategy: {
       name: 'Spot',
       value: 6,
@@ -130,6 +132,10 @@ const DLMMCreatePosition = ({
 
   const [dlmmPairs, setDlmmPairs] = useState<DLMMPair[]>([])
   const [availablePools, setAvailablePools] = useState<DLMMPairPool[]>([])
+
+  // Add loading states
+  const [isLoadingPairs, setIsLoadingPairs] = useState(false)
+  const [isLoadingPools, setIsLoadingPools] = useState(false)
 
   const getInstruction = async (): Promise<UiInstruction> => {
     const isValid = await validateInstruction({ schema, form, setFormErrors })
@@ -196,8 +202,8 @@ const DLMMCreatePosition = ({
         const createAccountIx = SystemProgram.createAccount({
           fromPubkey: wallet.publicKey,
           newAccountPubkey: positionKeypair.publicKey,
-          lamports: await connection.getMinimumBalanceForRentExemption(100),
-          space: 100,
+          lamports: await connection.getMinimumBalanceForRentExemption(128),
+          space: 128,
           programId: new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo'),
         })
 
@@ -211,8 +217,8 @@ const DLMMCreatePosition = ({
           positionPubKey: positionKeypair.publicKey,
           user: wallet?.publicKey,
           totalXAmount,
-          slippage: 5,
           totalYAmount,
+          slippage: form.slippage,
           strategy: {
             maxBinId,
             minBinId,
@@ -264,7 +270,8 @@ const DLMMCreatePosition = ({
 // INSUTRCTION FORM
   const inputs: InstructionInput[] = [
     {
-      label: 'Treasury Wallet to Manage Position',
+      label: 'Governance Wallet',
+      subtitle: 'Select the wallet that will manage the position',
       initialValue: form.governedAccount,
       name: 'governedAccount',
       type: InstructionInputType.GOVERNED_ACCOUNT,
@@ -274,15 +281,13 @@ const DLMMCreatePosition = ({
       assetType: 'wallet',
     },
     {
-      label: 'DLMM Pair',
+      label: 'DLMM Market Address',
+      subtitle: 'Enter the address of the DLMM market you want to create a position in',
       initialValue: form.dlmmPoolAddress,
       name: 'dlmmPoolAddress',
-      type: InstructionInputType.SELECT,
-      inputType: 'select',
-      options: dlmmPairs.map(pair => ({
-        value: pair.address,
-        label: `${pair.name} (${pair.baseToken}/${pair.quoteToken})`,
-      })),
+      type: InstructionInputType.INPUT,
+      inputType: 'text',
+      
     },
     {
       label: 'Pair Pool Selection',
@@ -290,10 +295,12 @@ const DLMMCreatePosition = ({
       name: 'dlmmPoolAddress',
       type: InstructionInputType.SELECT,
       inputType: 'select',
-      options: availablePools.map(pool => ({
-        value: pool.address,
-        label: `${pool.name} - TVL: $${pool.tvl.toLocaleString()} - 24h Volume: $${pool.volume24h.toLocaleString()}`,
-      })),
+      options: isLoadingPools
+        ? [{ value: '', label: 'Loading pool data...' }]
+        : availablePools.map(pool => ({
+            value: pool.address,
+            label: `${pool.name} - Daily APY: ${Number(pool.dailyBaseApy).toFixed(2)}%`
+          })),
     },
     {
       label: 'Strategy',
@@ -330,6 +337,14 @@ const DLMMCreatePosition = ({
       name: 'maxPrice',
       type: InstructionInputType.INPUT,
       inputType: 'number',
+    },
+    {
+      label: 'Slippage',
+      subtitle: 'Enter the slippage tolerance for the position. Default is 5%',
+      initialValue: form.slippage,
+      name: 'slippage',
+      type: InstructionInputType.INPUT,
+      inputType: 'number',
     }
   ]
 
@@ -340,151 +355,18 @@ const DLMMCreatePosition = ({
     )
   }, [form, handleSetInstructions, index])
 
-  useEffect(() => {
-    const fetchDLMMPairs = async () => {
-      try {
-        const response = await fetch('https://dlmm-api.meteora.ag/pairs')
-        if (!response.ok) throw new Error('Failed to fetch DLMM pairs')
-        const data = await response.json()
-        
-        const formattedPairs = data.map((pair: any) => ({
-          address: pair.address,
-          name: pair.name,
-          baseToken: pair.baseToken,
-          quoteToken: pair.quoteToken,
-          binStep: pair.binStep
-        }))
-        
-        setDlmmPairs(formattedPairs)
-      } catch (error) {
-        console.error('Error fetching DLMM pairs:', error)
-        setFormErrors(prev => ({
-          ...prev,
-          dlmmPairs: 'Failed to fetch DLMM pairs'
-        }))
-      }
-    }
-
-    fetchDLMMPairs()
-  }, [])
-
-  useEffect(() => {
-    const fetchDLMMPairPools = async () => {
-      if (!form.dlmmPoolAddress) {
-        setAvailablePools([])
-        return
-      }
-
-      try {
-        const response = await fetch(`https://dlmm-api.meteora.ag/pools/${form.dlmmPoolAddress}`)
-        if (!response.ok) throw new Error('Failed to fetch pools')
-        const data = await response.json()
-        
-        const formattedPools = data.map((pool: any) => ({
-          address: pool.address,
-          name: pool.name,
-          tvl: pool.tvl,
-          volume24h: pool.volume24h
-        }))
-        
-        setAvailablePools(formattedPools)
-      } catch (error) {
-        console.error('Error fetching pools:', error)
-        setFormErrors(prev => ({
-          ...prev,
-          pools: 'Failed to fetch pools'
-        }))
-      }
-    }
-
-    fetchDLMMPairPools()
-  }, [form.dlmmPoolAddress])
-
-  useEffect(() => {
-    const fetchPoolData = async () => {
-      if (!form.dlmmPoolAddress) return
-
-      try {
-        const uri = `https://dlmm-api.meteora.ag/pair/${form.dlmmPoolAddress}`
-        const response = await fetch(uri)
-        if (!response.ok) throw new Error('Failed to fetch pool data')
-
-        const data = await response.json()
-        const parsePairs = (pairs: string) => {
-          const [quoteToken, baseToken] = pairs
-            .split('-')
-            .map((pair: string) => pair.trim())
-          return { quoteToken, baseToken }
-        }
-        const { quoteToken, baseToken } = parsePairs(data.name)
-        const binStep = data.binStep // Get binStep from API response
-
-        setForm((prevForm) => ({
-          ...prevForm,
-          baseToken,
-          quoteToken,
-          binStep, // Store binStep in form state
-        }))
-
-        console.log(
-          `Updated pool data - baseToken: ${baseToken}, quoteToken: ${quoteToken}, binStep: ${binStep}`,
-        )
-      } catch (error) {
-        console.error('Error fetching pool data:', error)
-      }
-    }
-
-    fetchPoolData()
-  }, [form.dlmmPoolAddress])
-
-  useEffect(() => {
-    const validatePriceRange = async () => {
-      if (!form.dlmmPoolAddress || !form.minPrice || !form.maxPrice) return;
-
-      try {
-        const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress);
-        const dlmmPool = await DLMM.create(connection, dlmmPoolPk);
-        const binStep = dlmmPool?.lbPair?.binStep;
-        
-        if (!binStep) return;
-
-        // Convert prices to bin IDs
-        const binStepDecimal = binStep / 10000;
-        const minBinId = Math.floor(Math.log(form.minPrice) / Math.log(1 + binStepDecimal));
-        const maxBinId = Math.ceil(Math.log(form.maxPrice) / Math.log(1 + binStepDecimal));
-        
-        // Calculate number of bins
-        const numBins = maxBinId - minBinId + 1;
-        
-        // Update form with calculated bins
-        setForm(prev => ({
-          ...prev,
-          numBins: numBins
-        }));
-
-        // Validate bin range
-        if (numBins > 69) {
-          setFormErrors(prev => ({
-            ...prev,
-            priceRange: 'Price range too large. Maximum 69 bins allowed.'
-          }));
-        }
-      } catch (error) {
-        console.error('Error validating price range:', error);
-      }
-    };
-
-    validatePriceRange();
-  }, [form.dlmmPoolAddress, form.minPrice, form.maxPrice, connection]);
-
   return (
-    <InstructionForm
-      outerForm={form}
-      setForm={setForm}
-      inputs={inputs}
-      setFormErrors={setFormErrors}
-      formErrors={formErrors}
-    />
+    <>
+      {form && (
+        <InstructionForm
+          outerForm={form}
+          setForm={setForm}
+          inputs={inputs}
+          setFormErrors={setFormErrors}
+          formErrors={formErrors}
+        ></InstructionForm>
+      )}
+    </>
   )
 }
 
