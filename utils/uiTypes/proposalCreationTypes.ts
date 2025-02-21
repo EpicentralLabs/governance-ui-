@@ -675,12 +675,7 @@ export interface MeteoraCreatePositionForm {
   dlmmPoolAddress: string
   baseTokenAmount: number
   quoteTokenAmount: number
-  quoteToken: string
-  baseToken: string
   strategy: MeteoraStrategy
   minPrice: number
   maxPrice: number
-  numBins: number
-  autoFill: boolean
-  binStep: number
 }

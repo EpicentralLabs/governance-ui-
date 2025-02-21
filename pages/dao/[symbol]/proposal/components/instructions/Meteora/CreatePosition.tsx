@@ -11,7 +11,6 @@ import { UiInstruction } from '@utils/uiTypes/proposalCreationTypes'
 import {
   PublicKey,
   Keypair,
-  Connection,
   ComputeBudgetProgram,
   SystemProgram,
 } from '@solana/web3.js'
@@ -20,21 +19,19 @@ import InstructionForm, { InstructionInput } from '../FormCreator'
 import { InstructionInputType } from '../inputInstructionType'
 import useWalletOnePointOh from '@hooks/useWalletOnePointOh'
 import useGovernanceAssets from '@hooks/useGovernanceAssets'
-import DLMM from '@meteora-ag/dlmm'
 import { toStrategyParameters } from '@meteora-ag/dlmm'
 import { useConnection } from '@solana/wallet-adapter-react'
 import { MeteoraCreatePositionForm } from '@utils/uiTypes/proposalCreationTypes'
 import { StrategyParameters } from '@meteora-ag/dlmm'
+import DLMM from '@meteora-ag/dlmm'
 
 const schema = yup.object().shape({
   governedAccount: yup.object().required('Governed account is required'),
   dlmmPoolAddress: yup.string().required('DLMM pool address is required'),
-  baseToken: yup.string().required('Base token is required'),
   baseTokenAmount: yup
     .number()
     .required('Base token amount is required')
     .min(0),
-  quoteToken: yup.string().required('Quote token is required'),
   quoteTokenAmount: yup
     .number()
     .required('Quote token amount is required')
@@ -42,7 +39,6 @@ const schema = yup.object().shape({
   strategy: yup.object().required('Strategy is required'),
   minPrice: yup.number().required('Min price is required').min(0),
   maxPrice: yup.number().required('Max price is required').min(0),
-  numBins: yup.number().required('Number of bins is required').min(1),
 })
 
 const strategyOptions = [
@@ -70,22 +66,18 @@ const DLMMCreatePosition = ({
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const { handleSetInstructions } = useContext(NewProposalContext)
   const shouldBeGoverned = !!(index !== 0 && governance)
+
   const [form, setForm] = useState<MeteoraCreatePositionForm>({
     governedAccount: undefined,
     dlmmPoolAddress: '',
-    baseToken: '',
     baseTokenAmount: 0,
-    quoteToken: '',
     quoteTokenAmount: 0,
     strategy: {
       name: 'Spot',
-      value: 0,
+      value: 6,
     },
     minPrice: 0,
     maxPrice: 0,
-    numBins: 69,
-    autoFill: true,
-    binStep: 0,
   })
 
   const getInstruction = async (): Promise<UiInstruction> => {
@@ -112,7 +104,7 @@ const DLMMCreatePosition = ({
       const activeBin = await dlmmPool.getActiveBin()
 
       // Calculate bin IDs based on prices
-      const binStep = form.binStep || dlmmPool?.lbPair?.binStep
+      const binStep = dlmmPool?.lbPair?.binStep
 
       if (!binStep) {
         throw new Error('Bin step not available')
@@ -241,9 +233,10 @@ const DLMMCreatePosition = ({
       initialValue: form.governedAccount,
       name: 'governedAccount',
       type: InstructionInputType.GOVERNED_ACCOUNT,
-      shouldBeGoverned,
-      governance,
+      shouldBeGoverned: shouldBeGoverned as any,
+      governance: governance,
       options: assetAccounts,
+      assetType: 'token',
     },
     {
       label: 'DLMM Pool Address',
@@ -253,25 +246,11 @@ const DLMMCreatePosition = ({
       inputType: 'text',
     },
     {
-      label: 'Base Token',
-      initialValue: form.baseToken,
-      name: 'baseToken',
-      type: InstructionInputType.INPUT,
-      inputType: 'text',
-    },
-    {
       label: 'Base Token Amount',
       initialValue: form.baseTokenAmount,
       name: 'baseTokenAmount',
       type: InstructionInputType.INPUT,
       inputType: 'number',
-    },
-    {
-      label: 'Quote Token',
-      initialValue: form.quoteToken,
-      name: 'quoteToken',
-      type: InstructionInputType.INPUT,
-      inputType: 'text',
     },
     {
       label: 'Quote Token Amount',
@@ -301,20 +280,7 @@ const DLMMCreatePosition = ({
       name: 'maxPrice',
       type: InstructionInputType.INPUT,
       inputType: 'number',
-    },
-    {
-      label: 'Number of Bins',
-      initialValue: form.numBins,
-      name: 'numBins',
-      type: InstructionInputType.INPUT,
-      inputType: 'number',
-    },
-    {
-      label: 'Auto-Fill',
-      initialValue: form.autoFill,
-      name: 'autoFill',
-      type: InstructionInputType.SWITCH,
-    },
+    }
   ]
 
   useEffect(() => {
