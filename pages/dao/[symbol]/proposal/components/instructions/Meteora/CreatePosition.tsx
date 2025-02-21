@@ -21,7 +21,6 @@ import { UiInstruction } from '@utils/uiTypes/proposalCreationTypes'
 import {
   PublicKey,
   Keypair,
-  Connection,
   ComputeBudgetProgram,
 } from '@solana/web3.js'
 import { NewProposalContext } from '../../../new'
@@ -72,14 +71,14 @@ const strategyOptions = [
   { name: 'Bid Ask', value: 8 },
 ]
 /**
- * DLMMCreatePosition Component
+ * CreatePosition Component
  * 
  * @param {Object} props - Component props
  * @param {number} props.index - Index of the instruction
  * @param {ProgramAccount<Governance> | null} props.governance - Governance account
  * @returns {JSX.Element}
  */
-const DLMMCreatePosition = ({
+const CreatePosition = ({
   index,
   governance,
 }: {
@@ -93,6 +92,8 @@ const DLMMCreatePosition = ({
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const { handleSetInstructions } = useContext(NewProposalContext)
   const shouldBeGoverned = !!(index !== 0 && governance)
+
+  
   const [form, setForm] = useState<MeteoraCreatePositionForm>({
     governedAccount: undefined,
     dlmmPoolAddress: '',
@@ -103,14 +104,11 @@ const DLMMCreatePosition = ({
     strategy: {
       name: 'Spot',
       value: 0,
-      description:
-        'Provides a uniform distribution that is versatile and risk adjusted, suitable for any type of market and conditions. This is similar to setting a CLMM price range.',
     },
     minPrice: 0,
     maxPrice: 0,
     numBins: 69,
     autoFill: false,
-    description: '',
     binStep: 0,
   })
  /**
@@ -395,4 +393,4 @@ const DLMMCreatePosition = ({
   )
 }
 
-export default DLMMCreatePosition
+export default CreatePosition

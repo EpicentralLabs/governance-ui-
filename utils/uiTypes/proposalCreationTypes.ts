@@ -637,10 +637,10 @@ export interface CreateMeteoraPoolForm {
   }
 }
 
+// METEORA 
 export interface MeteoraStrategy {
   name: string
   value: number
-  description: string
 }
 
 export interface MeteoraAddLiquidityForm {
@@ -682,6 +682,5 @@ export interface MeteoraCreatePositionForm {
   maxPrice: number
   numBins: number
   autoFill: boolean
-  description: string
   binStep: number
 }
