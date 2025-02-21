@@ -152,7 +152,6 @@ import WithdrawFees from './components/instructions/Token2022/WithdrawFees'
 import MeteoraAddLiquidity from './components/instructions/Meteora/AddLiquidity'
 import MeteoraClaimRewards from './components/instructions/Meteora/ClaimRewards'
 import MeteoraRemoveLiquidity from './components/instructions/Meteora/RemoveLiquidity'
-import CreateDLMM from './components/instructions/Meteora/CreateDLMM'
 import MeteoraCreatePosition from './components/instructions/Meteora/CreatePosition'
 
 
@@ -577,7 +576,6 @@ const New = () => {
       [Instructions.MeteoraAddLiquidity]: MeteoraAddLiquidity,
       [Instructions.MeteoraClaimRewards]: MeteoraClaimRewards,
       [Instructions.MeteoraRemoveLiquidity]: MeteoraRemoveLiquidity,
-      [Instructions.CreateDLMM]: CreateDLMM,
       [Instructions.MeteoraCreatePosition]: MeteoraCreatePosition,
       [Instructions.SerumGrantLockedSRM]: {
         componentBuilderFunction: ({ index, governance }) => (

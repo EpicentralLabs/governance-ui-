@@ -624,19 +624,6 @@ export interface SymmetryWithdrawForm {
   withdrawType: number
 }
 
-export interface CreateMeteoraPoolForm {
-  poolType: number
-  baseTokenMint: string
-  quoteTokenMint: string
-  fee: number
-  governedAccount?: string
-  governedTokenAccount?: {
-    governance: {
-      account: string
-    }
-  }
-}
-
 // METEORA 
 export interface MeteoraStrategy {
   name: string

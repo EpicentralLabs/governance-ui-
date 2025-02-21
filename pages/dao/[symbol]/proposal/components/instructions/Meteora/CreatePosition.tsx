@@ -7,40 +7,87 @@ import {
   Governance,
 } from '@solana/spl-governance'
 import { validateInstruction } from '@utils/instructionTools'
-import { UiInstruction } from '@utils/uiTypes/proposalCreationTypes'
 import {
   PublicKey,
   Keypair,
   ComputeBudgetProgram,
   SystemProgram,
+  TransactionInstruction,
 } from '@solana/web3.js'
-import { NewProposalContext } from '../../../new'
-import InstructionForm, { InstructionInput } from '../FormCreator'
-import { InstructionInputType } from '../inputInstructionType'
-import useWalletOnePointOh from '@hooks/useWalletOnePointOh'
-import useGovernanceAssets from '@hooks/useGovernanceAssets'
+
+// SDK & Program Imports
 import { toStrategyParameters } from '@meteora-ag/dlmm'
-import { useConnection } from '@solana/wallet-adapter-react'
-import { MeteoraCreatePositionForm } from '@utils/uiTypes/proposalCreationTypes'
-import { StrategyParameters } from '@meteora-ag/dlmm'
 import DLMM from '@meteora-ag/dlmm'
 
+// Hooks
+import { NewProposalContext } from '../../../new'
+import useWalletOnePointOh from '@hooks/useWalletOnePointOh'
+import useGovernanceAssets from '@hooks/useGovernanceAssets'
+import { useConnection } from '@solana/wallet-adapter-react'
+
+// Components
+import InstructionForm, { InstructionInput } from '../FormCreator'
+import { InstructionInputType } from '../inputInstructionType'
+
+// Types
+import { AssetAccount } from '@utils/uiTypes/assets'
+
+interface MeteoraStrategy {
+  name: string
+  value: number
+}
+
+interface MeteoraCreatePositionForm {
+  governedAccount: AssetAccount | undefined
+  dlmmPoolAddress: string
+  baseTokenAmount: number
+  quoteTokenAmount: number
+  strategy: MeteoraStrategy
+  minPrice: number
+  maxPrice: number
+  baseToken?: string
+  quoteToken?: string
+  binStep?: number
+  numBins?: number
+}
+
+interface DLMMPair {
+  address: string
+  name: string
+  baseToken: string
+  quoteToken: string
+  binStep: number
+}
+
+interface DLMMPairPool {
+  address: string
+  name: string
+  tvl: number
+  volume24h: number
+}
+
+interface UiInstruction {
+  serializedInstruction: string
+  additionalSerializedInstructions?: string[]
+  isValid: boolean
+  governance: ProgramAccount<Governance> | undefined
+  prerequisiteInstructions?: TransactionInstruction[]
+  prerequisiteInstructionsSigners?: Keypair[]
+  chunkBy?: number
+}
+
+// Validation Schema
 const schema = yup.object().shape({
   governedAccount: yup.object().required('Governed account is required'),
   dlmmPoolAddress: yup.string().required('DLMM pool address is required'),
-  baseTokenAmount: yup
-    .number()
-    .required('Base token amount is required')
-    .min(0),
-  quoteTokenAmount: yup
-    .number()
-    .required('Quote token amount is required')
-    .min(0),
+  baseTokenAmount: yup.number().required('Base token amount is required').min(0),
+  quoteTokenAmount: yup.number().required('Quote token amount is required').min(0),
   strategy: yup.object().required('Strategy is required'),
   minPrice: yup.number().required('Min price is required').min(0),
   maxPrice: yup.number().required('Max price is required').min(0),
 })
 
+// Strategy Options
 const strategyOptions = [
   {
     name: 'Spot',
@@ -52,6 +99,7 @@ const strategyOptions = [
   { name: 'Bid Ask', value: 8 },
 ]
 
+// Main Component
 const DLMMCreatePosition = ({
   index,
   governance,
@@ -79,6 +127,9 @@ const DLMMCreatePosition = ({
     minPrice: 0,
     maxPrice: 0,
   })
+
+  const [dlmmPairs, setDlmmPairs] = useState<DLMMPair[]>([])
+  const [availablePools, setAvailablePools] = useState<DLMMPairPool[]>([])
 
   const getInstruction = async (): Promise<UiInstruction> => {
     const isValid = await validateInstruction({ schema, form, setFormErrors })
@@ -121,22 +172,6 @@ const DLMMCreatePosition = ({
         Math.log(form.maxPrice) / Math.log(1 + binStepDecimal)
       )
 
-      // Calculate and update number of bins based on price range
-      const calculatedNumBins = maxBinId - minBinId + 1
-
-      // Update form with calculated number of bins
-      setForm((prev) => ({
-        ...prev,
-        numBins: calculatedNumBins,
-      }))
-
-      // Validate bin range
-      if (calculatedNumBins > 69) {
-        throw new Error(
-          'Price range too large - exceeds maximum allowed bins (69)'
-        )
-      }
-
       // Get actual prices from bin IDs for validation
       const minBinPrice = (1 + binStepDecimal) ** minBinId
       const maxBinPrice = (1 + binStepDecimal) ** maxBinId
@@ -149,7 +184,6 @@ const DLMMCreatePosition = ({
       // Generate position keypair
       const signers: Keypair[] = []
       const positionKeypair = Keypair.generate()
-      signers.push(positionKeypair)
 
       // Declare prerequisiteInstructions and filteredInstructions at the start
       const prerequisiteInstructions: any[] = []
@@ -227,23 +261,47 @@ const DLMMCreatePosition = ({
     }
   }
 
+// INSUTRCTION FORM
   const inputs: InstructionInput[] = [
     {
-      label: 'Governance',
+      label: 'Treasury Wallet to Manage Position',
       initialValue: form.governedAccount,
       name: 'governedAccount',
       type: InstructionInputType.GOVERNED_ACCOUNT,
       shouldBeGoverned: shouldBeGoverned as any,
       governance: governance,
       options: assetAccounts,
-      assetType: 'token',
+      assetType: 'wallet',
     },
     {
-      label: 'DLMM Pool Address',
+      label: 'DLMM Pair',
       initialValue: form.dlmmPoolAddress,
       name: 'dlmmPoolAddress',
-      type: InstructionInputType.INPUT,
-      inputType: 'text',
+      type: InstructionInputType.SELECT,
+      inputType: 'select',
+      options: dlmmPairs.map(pair => ({
+        value: pair.address,
+        label: `${pair.name} (${pair.baseToken}/${pair.quoteToken})`,
+      })),
+    },
+    {
+      label: 'Pair Pool Selection',
+      initialValue: form.dlmmPoolAddress,
+      name: 'dlmmPoolAddress',
+      type: InstructionInputType.SELECT,
+      inputType: 'select',
+      options: availablePools.map(pool => ({
+        value: pool.address,
+        label: `${pool.name} - TVL: $${pool.tvl.toLocaleString()} - 24h Volume: $${pool.volume24h.toLocaleString()}`,
+      })),
+    },
+    {
+      label: 'Strategy',
+      initialValue: form.strategy,
+      name: 'strategy',
+      type: InstructionInputType.SELECT,
+      inputType: 'select',
+      options: strategyOptions,
     },
     {
       label: 'Base Token Amount',
@@ -258,14 +316,6 @@ const DLMMCreatePosition = ({
       name: 'quoteTokenAmount',
       type: InstructionInputType.INPUT,
       inputType: 'number',
-    },
-    {
-      label: 'Strategy',
-      initialValue: form.strategy,
-      name: 'strategy',
-      type: InstructionInputType.SELECT,
-      inputType: 'select',
-      options: strategyOptions,
     },
     {
       label: 'Min Price',
@@ -289,6 +339,66 @@ const DLMMCreatePosition = ({
       index,
     )
   }, [form, handleSetInstructions, index])
+
+  useEffect(() => {
+    const fetchDLMMPairs = async () => {
+      try {
+        const response = await fetch('https://dlmm-api.meteora.ag/pairs')
+        if (!response.ok) throw new Error('Failed to fetch DLMM pairs')
+        const data = await response.json()
+        
+        const formattedPairs = data.map((pair: any) => ({
+          address: pair.address,
+          name: pair.name,
+          baseToken: pair.baseToken,
+          quoteToken: pair.quoteToken,
+          binStep: pair.binStep
+        }))
+        
+        setDlmmPairs(formattedPairs)
+      } catch (error) {
+        console.error('Error fetching DLMM pairs:', error)
+        setFormErrors(prev => ({
+          ...prev,
+          dlmmPairs: 'Failed to fetch DLMM pairs'
+        }))
+      }
+    }
+
+    fetchDLMMPairs()
+  }, [])
+
+  useEffect(() => {
+    const fetchDLMMPairPools = async () => {
+      if (!form.dlmmPoolAddress) {
+        setAvailablePools([])
+        return
+      }
+
+      try {
+        const response = await fetch(`https://dlmm-api.meteora.ag/pools/${form.dlmmPoolAddress}`)
+        if (!response.ok) throw new Error('Failed to fetch pools')
+        const data = await response.json()
+        
+        const formattedPools = data.map((pool: any) => ({
+          address: pool.address,
+          name: pool.name,
+          tvl: pool.tvl,
+          volume24h: pool.volume24h
+        }))
+        
+        setAvailablePools(formattedPools)
+      } catch (error) {
+        console.error('Error fetching pools:', error)
+        setFormErrors(prev => ({
+          ...prev,
+          pools: 'Failed to fetch pools'
+        }))
+      }
+    }
+
+    fetchDLMMPairPools()
+  }, [form.dlmmPoolAddress])
 
   useEffect(() => {
     const fetchPoolData = async () => {
