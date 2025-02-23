@@ -478,15 +478,15 @@ const DLMMCreatePosition = ({
       additionalComponent: poolDetails ? (
         <div className="text-sm text-neutral-500">
           <p>Current market price: ${Number(poolDetails.current_price).toFixed(6)}</p>
-          <p>Suggested min: ${(Number(poolDetails.current_price) * 0.8).toFixed(6)}</p>
+          <p>Suggested min: ${(Number(poolDetails.current_price) * 0.9).toFixed(6)}</p>
         </div>
       ) : null,
       onChange: (value) => {
         const numValue = Number(value)
         if (!isNaN(numValue) && poolDetails) {
           // Ensure min price is not too far from current price
-          const minAllowed = Number(poolDetails.current_price) * 0.5
-          const maxAllowed = Number(poolDetails.current_price) * 0.95
+          const minAllowed = Number(poolDetails.current_price) * 0.8
+          const maxAllowed = Number(poolDetails.current_price) * 1.2
           
           if (numValue < minAllowed || numValue > maxAllowed) {
             setFormErrors(prev => ({
@@ -513,15 +513,15 @@ const DLMMCreatePosition = ({
       additionalComponent: poolDetails ? (
         <div className="text-sm text-neutral-500">
           <p>Current market price: ${Number(poolDetails.current_price).toFixed(6)}</p>
-          <p>Suggested max: ${(Number(poolDetails.current_price) * 1.2).toFixed(6)}</p>
+          <p>Suggested max: ${(Number(poolDetails.current_price) * 1.10).toFixed(6)}</p>
         </div>
       ) : null,
       onChange: (value) => {
         const numValue = Number(value)
         if (!isNaN(numValue) && poolDetails) {
           // Ensure max price is not too far from current price
-          const minAllowed = Number(poolDetails.current_price) * 1.05
-          const maxAllowed = Number(poolDetails.current_price) * 1.5
+          const minAllowed = Number(poolDetails.current_price) * 0.8
+          const maxAllowed = Number(poolDetails.current_price) * 1.2
           
           if (numValue < minAllowed || numValue > maxAllowed) {
             setFormErrors(prev => ({
