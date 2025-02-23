@@ -31,6 +31,7 @@ import { InstructionInputType } from '../inputInstructionType'
 // Types
 import { AssetAccount } from '@utils/uiTypes/assets'
 
+
 interface MeteoraCreatePositionForm {
   governedAccount: AssetAccount | undefined
   dlmmPoolAddress: string
@@ -249,8 +250,7 @@ const DLMMCreatePosition = ({
 
       // Calculate amounts based on price range
       const totalXAmount = new BN(form.baseTokenAmount)
-      const priceAtActiveBin = dlmmPool.fromPricePerLamport(Number(activeBin.price))
-      const totalYAmount = totalXAmount.mul(new BN(Number(priceAtActiveBin)))
+      const totalYAmount = new BN(form.quoteTokenAmount)
 
       // Generate position keypair
       const positionKeypair = Keypair.generate()
@@ -263,7 +263,7 @@ const DLMMCreatePosition = ({
       // First create the position account
       prerequisiteInstructions.push(
         SystemProgram.createAccount({
-          fromPubkey: wallet.publicKey,
+          fromPubkey: wallet?.publicKey,
           newAccountPubkey: positionKeypair.publicKey,
           lamports: await connection.getMinimumBalanceForRentExemption(200), // Increased space for safety
           space: 200, // Increased space for safety
@@ -303,14 +303,12 @@ const DLMMCreatePosition = ({
       )
 
       return {
-        // First instruction becomes the primary
         serializedInstruction: serializedInstructions[0],
-        // Remaining instructions become additional
         additionalSerializedInstructions: serializedInstructions.slice(1),
-        isValid: true,
         governance: form?.governedAccount?.governance,
         prerequisiteInstructions,
         prerequisiteInstructionsSigners,
+        isValid: true,
         chunkBy: 1,
       }
 
