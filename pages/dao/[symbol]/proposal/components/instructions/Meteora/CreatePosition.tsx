@@ -233,7 +233,7 @@ const DLMMCreatePosition = ({
 
       // Get active bin for reference
       const activeBin = await dlmmPool.getActiveBin()
-      const binStep = dlmmPool?.lbPair?.binStep
+      const binStep = dlmmPool.lbPair.binStep
 
       if (!binStep) {
         throw new Error('Bin step not available')
@@ -254,22 +254,30 @@ const DLMMCreatePosition = ({
 
       // Generate position keypair
       const positionKeypair = Keypair.generate()
+      console.log('Position keypair:', positionKeypair.publicKey.toBase58())
+
       const prerequisiteInstructions: TransactionInstruction[] = []
+      console.log('Prerequisite instructions:', prerequisiteInstructions)
+
       const prerequisiteInstructionsSigners: Keypair[] = []
+      console.log('Prerequisite instructions signers:', prerequisiteInstructionsSigners)
+
 
       // Add position keypair to signers
       prerequisiteInstructionsSigners.push(positionKeypair)
+      console.log('Prerequisite instructions signers:', prerequisiteInstructionsSigners)
 
       // First create the position account
       prerequisiteInstructions.push(
         SystemProgram.createAccount({
-          fromPubkey: wallet?.publicKey,
+          fromPubkey: wallet.publicKey,
           newAccountPubkey: positionKeypair.publicKey,
           lamports: await connection.getMinimumBalanceForRentExemption(200), // Increased space for safety
           space: 200, // Increased space for safety
           programId: new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo'),
         })
       )
+      console.log('Position keypair:', positionKeypair.publicKey.toBase58())
 
       // Create position with calculated parameters
       const createPositionTx = await dlmmPool.initializePositionAndAddLiquidityByStrategy({
@@ -285,6 +293,7 @@ const DLMMCreatePosition = ({
           singleSidedX: form.singleSidedX
         }
       })
+      console.log('Create position transaction:', createPositionTx)
 
       // Filter and combine instructions
       const filteredInstructions: TransactionInstruction[] = [
@@ -296,11 +305,13 @@ const DLMMCreatePosition = ({
       if (filteredInstructions.length === 0) {
         throw new Error('No instructions returned by create position.')
       }
+      console.log('Filtered instructions:', filteredInstructions)
 
       // Serialize all instructions
       const serializedInstructions = filteredInstructions.map(
         (instruction) => serializeInstructionToBase64(instruction),
       )
+      console.log('Serialized instructions:', serializedInstructions)
 
       return {
         serializedInstruction: serializedInstructions[0],
@@ -311,6 +322,7 @@ const DLMMCreatePosition = ({
         isValid: true,
         chunkBy: 1,
       }
+
 
     } catch (err) {
       console.error('Error building create position instruction:', err)
