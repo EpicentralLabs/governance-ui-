@@ -23,6 +23,7 @@ export interface InstructionInput {
   max?: number
   step?: number
   onBlur?: () => void
+  onChange?: (value: any) => void
   shouldBeGoverned?: boolean
   governance?: ProgramAccount<Governance> | null
   options?: any[]
@@ -170,41 +171,44 @@ const InstructionInput = ({
           })
         }
         return (
-          <Input
-            min={input.min}
-            subtitle={input.subtitle}
-            label={input.label}
-            value={form[input.name]}
-            type={input.inputType!}
-            onChange={(event) => {
-              if (input.inputType === 'number') {
-                const isNumber =
-                  event.target.value !== '' &&
-                  !isNaN(Number(event.target.value))
+          <>
+            <Input
+              min={input.min}
+              max={input.max}
+              subtitle={input.subtitle}
+              label={input.label}
+              value={form[input.name]}
+              type={input.inputType!}
+              onChange={(event) => {
+                const value = input.inputType === 'number' 
+                  ? (event.target.value !== '' ? Number(event.target.value) : event.target.value)
+                  : event.target.value
 
+                // First call the custom onChange if provided
+                if (input.onChange) {
+                  input.onChange(value)
+                }
+
+                // Then handle the existing form update logic
                 handleSetForm({
-                  value: isNumber
-                    ? Number(event.target.value)
-                    : event.target.value,
+                  value: value,
                   propertyName: input.name,
                 })
-              } else {
-                handleSetForm({
-                  value: event.target.value,
-                  propertyName: input.name,
-                })
+              }}
+              step={input.step}
+              error={formErrors[input.name]}
+              onBlur={
+                input.onBlur
+                  ? input.onBlur
+                  : input.validateMinMax
+                  ? validateAmountOnBlur
+                  : undefined
               }
-            }}
-            step={input.step}
-            error={formErrors[input.name]}
-            onBlur={
-              input.onBlur
-                ? input.onBlur
-                : input.validateMinMax
-                ? validateAmountOnBlur
-                : undefined
-            }
-          />
+            />
+            {input.additionalComponent && (
+              <div className="mt-1">{input.additionalComponent}</div>
+            )}
+          </>
         )
       }
       case InstructionInputType.TEXTAREA:
@@ -327,7 +331,6 @@ const InstructionInput = ({
   return (
     <>
       {getComponent()}
-      {input.additionalComponent && input.additionalComponent}
     </>
   )
 }

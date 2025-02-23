@@ -13,6 +13,7 @@ import {
   ComputeBudgetProgram,
   SystemProgram,
   TransactionInstruction,
+  sendAndConfirmTransaction,
 } from '@solana/web3.js'
 
 // SDK & Program Imports
@@ -53,20 +54,6 @@ interface MeteoraCreatePositionForm {
   numBins?: number
 }
 
-interface DLMMPair {
-  address: string
-  name: string
-  baseToken: string
-  quoteToken: string
-  binStep: number
-}
-
-interface DLMMPairPool {
-  address: string
-  name: string
-  dailyBaseApy: string
-}
-
 interface UiInstruction {
   serializedInstruction: string
   additionalSerializedInstructions?: string[]
@@ -75,6 +62,20 @@ interface UiInstruction {
   prerequisiteInstructions?: TransactionInstruction[]
   prerequisiteInstructionsSigners?: Keypair[]
   chunkBy?: number
+}
+
+// Add this interface for the API response
+interface DLMMPoolApiResponse {
+  name: string
+  current_price: number
+  bin_step: number
+  base_fee_percentage: number
+  max_fee_percentage: number
+  fees_24h: number
+  cumulative_fee_volume: number
+  trade_volume_24h: number
+  cumulative_trade_volume: number
+  liquidity: number
 }
 
 // Validation Schema
@@ -130,12 +131,39 @@ const DLMMCreatePosition = ({
     maxPrice: 0,
   })
 
-  const [dlmmPairs, setDlmmPairs] = useState<DLMMPair[]>([])
-  const [availablePools, setAvailablePools] = useState<DLMMPairPool[]>([])
+  // Add state for pool details
+  const [poolDetails, setPoolDetails] = useState<DLMMPoolApiResponse | null>(null)
+  const [isLoadingPoolDetails, setIsLoadingPoolDetails] = useState(false)
 
-  // Add loading states
-  const [isLoadingPairs, setIsLoadingPairs] = useState(false)
-  const [isLoadingPools, setIsLoadingPools] = useState(false)
+  // Add function to fetch pool details
+  const fetchPoolDetails = async (address: string) => {
+    if (!address) return
+    
+    setIsLoadingPoolDetails(true)
+    try {
+      const response = await fetch(`https://dlmm-api.meteora.ag/pair/${address}`)
+      if (!response.ok) throw new Error('Failed to fetch pool details')
+      const data = await response.json()
+      setPoolDetails(data)
+    } catch (error) {
+      console.error('Error fetching pool details:', error)
+      setFormErrors(prev => ({
+        ...prev,
+        dlmmPoolAddress: 'Failed to fetch pool details'
+      }))
+    } finally {
+      setIsLoadingPoolDetails(false)
+    }
+  }
+
+  // Add effect to fetch pool details when address changes
+  useEffect(() => {
+    if (form.dlmmPoolAddress) {
+      fetchPoolDetails(form.dlmmPoolAddress)
+    } else {
+      setPoolDetails(null)
+    }
+  }, [form.dlmmPoolAddress])
 
   const getInstruction = async (): Promise<UiInstruction> => {
     const isValid = await validateInstruction({ schema, form, setFormErrors })
@@ -153,39 +181,24 @@ const DLMMCreatePosition = ({
     }
 
     try {
-      const dlmmPoolPk = new PublicKey(form.dlmmPoolAddress)
-      const dlmmPool = await DLMM.create(connection, dlmmPoolPk)
+      const dlmmPoolAddress = new PublicKey(form.dlmmPoolAddress)
+      const dlmmPool = await DLMM.create(connection, dlmmPoolAddress)
       // await dlmmPool.refetchStates()
 
       // Get active bin and calculate range
-      const activeBin = await dlmmPool.getActiveBin()
-
-      // Calculate bin IDs based on prices
+      const activeBin = await dlmmPool.getActiveBin();
       const binStep = dlmmPool?.lbPair?.binStep
+      // Get active bin price per token
+      const activeBinPricePerToken = dlmmPool.fromPricePerLamport(
+        Number(activeBin.price)
+      );
+
+      const totalXAmount = new BN(form.baseTokenAmount);
+      const totalYAmount = totalXAmount.mul(new BN(Number(activeBinPricePerToken)));
 
       if (!binStep) {
         throw new Error('Bin step not available')
       }
-
-      // Convert binStep from basis points to decimal
-      const binStepDecimal = binStep / 10000
-
-      // Calculate bin IDs using the correct formula
-      const minBinId = Math.floor(
-        Math.log(form.minPrice) / Math.log(1 + binStepDecimal)
-      )
-      const maxBinId = Math.ceil(
-        Math.log(form.maxPrice) / Math.log(1 + binStepDecimal)
-      )
-
-      // Get actual prices from bin IDs for validation
-      const minBinPrice = (1 + binStepDecimal) ** minBinId
-      const maxBinPrice = (1 + binStepDecimal) ** maxBinId
-      console.log(`Price Range: ${minBinPrice} - ${maxBinPrice}`)
-
-      // Convert amounts to BN directly
-      const totalXAmount = new BN(form.baseTokenAmount)
-      const totalYAmount = new BN(form.quoteTokenAmount)
 
       // Generate position keypair
       const signers: Keypair[] = []
@@ -211,13 +224,17 @@ const DLMMCreatePosition = ({
         prerequisiteInstructions.push(createAccountIx)
       }
 
+      const TOTAL_RANGE_INTERVAL = 15; // 15 bins on each side of the active bin
+      const minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL;
+      const maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL;
+
       // Create the position transaction
       const createPositionTx =
         await dlmmPool.initializePositionAndAddLiquidityByStrategy({
           positionPubKey: positionKeypair.publicKey,
           user: wallet?.publicKey,
-          totalXAmount,
-          totalYAmount,
+          totalXAmount, // base token amount
+          totalYAmount, // quote token amount
           slippage: form.slippage,
           strategy: {
             maxBinId,
@@ -225,6 +242,7 @@ const DLMMCreatePosition = ({
             strategyType: form.strategy.value,
           },
         })
+
 
       // Filter and combine instructions
       filteredInstructions.push(
@@ -287,20 +305,23 @@ const DLMMCreatePosition = ({
       name: 'dlmmPoolAddress',
       type: InstructionInputType.INPUT,
       inputType: 'text',
-      
-    },
-    {
-      label: 'Pair Pool Selection',
-      initialValue: form.dlmmPoolAddress,
-      name: 'dlmmPoolAddress',
-      type: InstructionInputType.SELECT,
-      inputType: 'select',
-      options: isLoadingPools
-        ? [{ value: '', label: 'Loading pool data...' }]
-        : availablePools.map(pool => ({
-            value: pool.address,
-            label: `${pool.name} - Daily APY: ${Number(pool.dailyBaseApy).toFixed(2)}%`
-          })),
+      // Add pool details display
+      additionalComponent: isLoadingPoolDetails ? (
+        <div className="text-sm text-neutral-500">Loading pool details...</div>
+      ) : poolDetails ? (
+        <div className="text-sm">
+          <p><strong>Pool Name:</strong> {poolDetails.name}</p>
+          <p><strong>Current Price:</strong> ${Number(poolDetails.current_price).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+          <p><strong>Bin Step:</strong> {Number(poolDetails.bin_step).toLocaleString()}</p>
+          <p><strong>Base Fee:</strong> {Number(poolDetails.base_fee_percentage).toFixed(2)}%</p>
+          <p><strong>Max Fee:</strong> {Number(poolDetails.max_fee_percentage).toFixed(2)}%</p>
+          <p><strong>Fees 24h:</strong> ${Number(poolDetails.fees_24h).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+          <p><strong>Cumulative Fee Volume:</strong> ${Number(poolDetails.cumulative_fee_volume).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+          <p><strong>Trade Volume 24h:</strong> ${Number(poolDetails.trade_volume_24h).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+          <p><strong>Cumulative Trade Volume:</strong> ${Number(poolDetails.cumulative_trade_volume).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+          <p><strong>Liquidity:</strong> ${Number(poolDetails.liquidity).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+        </div>
+      ) : null,
     },
     {
       label: 'Strategy',
@@ -316,6 +337,17 @@ const DLMMCreatePosition = ({
       name: 'baseTokenAmount',
       type: InstructionInputType.INPUT,
       inputType: 'number',
+      onChange: (value) => {
+        const baseAmount = Number(value)
+        if (poolDetails && !isNaN(baseAmount)) {
+          const quoteAmount = baseAmount * poolDetails.current_price
+          setForm(prev => ({
+            ...prev,
+            baseTokenAmount: baseAmount,
+            quoteTokenAmount: quoteAmount
+          }))
+        }
+      }
     },
     {
       label: 'Quote Token Amount',
@@ -323,6 +355,17 @@ const DLMMCreatePosition = ({
       name: 'quoteTokenAmount',
       type: InstructionInputType.INPUT,
       inputType: 'number',
+      onChange: (value) => {
+        const quoteAmount = Number(value)
+        if (poolDetails && !isNaN(quoteAmount)) {
+          const baseAmount = quoteAmount / poolDetails.current_price
+          setForm(prev => ({
+            ...prev,
+            baseTokenAmount: baseAmount,
+            quoteTokenAmount: quoteAmount
+          }))
+        }
+      }
     },
     {
       label: 'Min Price',
@@ -330,17 +373,32 @@ const DLMMCreatePosition = ({
       name: 'minPrice',
       type: InstructionInputType.INPUT,
       inputType: 'number',
+      additionalComponent: isLoadingPoolDetails ? (
+        <div className="text-sm text-neutral-500">Loading pool details...</div>
+      ) : poolDetails ? (
+        <div className="text-sm">
+          <p>Current Base Token Price: ${Number(poolDetails.current_price).toFixed(2)}</p>
+        </div>
+      ) : null,
     },
+    
     {
       label: 'Max Price',
       initialValue: form.maxPrice,
       name: 'maxPrice',
       type: InstructionInputType.INPUT,
       inputType: 'number',
+      additionalComponent: isLoadingPoolDetails ? (
+        <div className="text-sm text-neutral-500">Loading pool details...</div>
+      ) : poolDetails ? (
+        <div className="text-sm">
+          <p>Current Quote Token Price: ${Number(poolDetails.current_price).toFixed(2)}</p>
+        </div>
+      ) : null,
     },
     {
       label: 'Slippage',
-      subtitle: 'Enter the slippage tolerance for the position. Default is 5%',
+      subtitle: 'Enter the slippage tolerance for the position. Default is 2%',
       initialValue: form.slippage,
       name: 'slippage',
       type: InstructionInputType.INPUT,
