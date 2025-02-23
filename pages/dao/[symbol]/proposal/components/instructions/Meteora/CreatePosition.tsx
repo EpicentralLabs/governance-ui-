@@ -168,6 +168,7 @@ const DLMMCreatePosition = ({
     minPrice: 0,
     maxPrice: 0,
     singleSidedX: false,
+    singleSidedY: true,
   })
 
   // Add state for pool details
@@ -390,10 +391,13 @@ const DLMMCreatePosition = ({
         type: InstructionInputType.SWITCH
       }
     ] : []),
-    // Hide autofill for single-sided strategies
+    // Hide autofill for single-sided and imbalanced strategies
     ...(!(form.strategy.value === StrategyType.SpotOneSide ||
          form.strategy.value === StrategyType.CurveOneSide ||
-         form.strategy.value === StrategyType.BidAskOneSide) ? [
+         form.strategy.value === StrategyType.BidAskOneSide ||
+         form.strategy.value === StrategyType.SpotImBalanced ||
+         form.strategy.value === StrategyType.CurveImBalanced ||
+         form.strategy.value === StrategyType.BidAskImBalanced) ? [
       {
         label: 'Autofill Base/Quote Token Amount?',
         subtitle: 'If enabled, the base and quote token amounts will be autocalculated based on the current pool price',
@@ -432,42 +436,17 @@ const DLMMCreatePosition = ({
       name: 'baseTokenAmount',
       type: InstructionInputType.INPUT,
       inputType: 'number',
-      onChange: async (value) => {
+      onChange: (value) => {
         const baseAmount = Number(value)
         if (isNaN(baseAmount)) return
         
-        if (form.autofill && poolDetails) {
-          try {
-            const dlmmPool = await DLMM.create(connection, new PublicKey(form.dlmmPoolAddress))
-            const activeBin = await dlmmPool.getActiveBin()
-            const binStep = dlmmPool.lbPair.binStep
-
-            // Use SDK's autoFillY function with proper lamport conversion
-            const quoteAmountLamports = autoFillXByStrategy(
-              activeBin.binId,
-              binStep,
-              new BN(baseAmount * 1e9), // Convert SOL to lamports
-              new BN(0),
-              new BN(0),
-              activeBin.binId - 10, // Reasonable range around active bin
-              activeBin.binId + 10,
-              form.strategy.value
-            )
-
-            setForm(prev => ({
-              ...prev,
-              baseTokenAmount: baseAmount,
-              quoteTokenAmount: roundToDecimals(Number(quoteAmountLamports) / 1e6, 6) // Convert from USDC lamports
-            }))
-          } catch (err) {
-            console.error('Error in autofill:', err)
-          }
-        } else {
-          setForm(prev => ({
-            ...prev,
-            baseTokenAmount: baseAmount
-          }))
-        }
+        setForm(prev => ({
+          ...prev,
+          baseTokenAmount: baseAmount,
+          ...(prev.autofill && poolDetails ? {
+            quoteTokenAmount: roundToDecimals(baseAmount * poolDetails.current_price, 6)
+          } : {})
+        }))
       }
     },
     {
@@ -476,42 +455,17 @@ const DLMMCreatePosition = ({
       name: 'quoteTokenAmount',
       type: InstructionInputType.INPUT,
       inputType: 'number',
-      onChange: async (value) => {
+      onChange: (value) => {
         const quoteAmount = Number(value)
         if (isNaN(quoteAmount)) return
 
-        if (form.autofill && poolDetails) {
-          try {
-            const dlmmPool = await DLMM.create(connection, new PublicKey(form.dlmmPoolAddress))
-            const activeBin = await dlmmPool.getActiveBin()
-            const binStep = dlmmPool.lbPair.binStep
-
-            // Use SDK's autoFillX function with proper lamport conversion
-            const baseAmountLamports = autoFillYByStrategy(
-              activeBin.binId,
-              binStep,
-              new BN(quoteAmount * 1e6), // Convert USDC to lamports
-              new BN(0),
-              new BN(0),
-              activeBin.binId - 10,
-              activeBin.binId + 10,
-              form.strategy.value
-            )
-
-            setForm(prev => ({
-              ...prev,
-              quoteTokenAmount: quoteAmount,
-              baseTokenAmount: roundToDecimals(Number(baseAmountLamports) / 1e9, 6) // Convert from SOL lamports
-            }))
-          } catch (err) {
-            console.error('Error in autofill:', err)
-          }
-        } else {
-          setForm(prev => ({
-            ...prev,
-            quoteTokenAmount: quoteAmount
-          }))
-        }
+        setForm(prev => ({
+          ...prev,
+          quoteTokenAmount: quoteAmount,
+          ...(prev.autofill && poolDetails ? {
+            baseTokenAmount: roundToDecimals(quoteAmount / poolDetails.current_price, 6)
+          } : {})
+        }))
       }
     },
     {
