@@ -272,8 +272,8 @@ const DLMMCreatePosition = ({
       const createPositionTx = await dlmmPool.initializePositionAndAddLiquidityByStrategy({
         positionPubKey: positionKeypair.publicKey,
         user: wallet.publicKey,
-        totalXAmount,
-        totalYAmount,
+        totalXAmount, // base token amount
+        totalYAmount, // quote token amount
         slippage: form.slippage,
         strategy: {
           maxBinId,
@@ -380,8 +380,8 @@ const DLMMCreatePosition = ({
         form.strategy.value === StrategyType.CurveOneSide ||
         form.strategy.value === StrategyType.BidAskOneSide ? [
       {
-        label: 'ENABLED: BUY-SIDE || DISABLED: SELL-SIDE',
-        subtitle: 'ENABLED: Strategy will be single-sided for the base token (Buy-Side). || DISABLED: Strategy will be single-sided for the quote token (Sell-Side).',
+        label: 'ENABLED: SELL-SIDE || DISABLED: BUY-SIDE',
+        subtitle: 'ENABLED: Strategy will be single-sided for the base token (Sell-Side). || DISABLED: Strategy will be single-sided for the quote token (Buy-Side).',
         initialValue: form.singleSidedX,
         name: 'singleSidedX',
         type: InstructionInputType.SWITCH
