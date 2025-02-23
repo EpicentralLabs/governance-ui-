@@ -13,13 +13,10 @@ import {
   ComputeBudgetProgram,
   SystemProgram,
   TransactionInstruction,
-  sendAndConfirmTransaction,
 } from '@solana/web3.js'
 
 // SDK & Program Imports
 import DLMM, { StrategyType, autoFillYByStrategy, autoFillXByStrategy } from '@meteora-ag/dlmm'
-import { BN as AnchorBN } from '@coral-xyz/anchor'
-import { Strategy } from '@meteora-ag/dlmm'
 
 // Hooks
 import { NewProposalContext } from '../../../new'
@@ -33,11 +30,6 @@ import { InstructionInputType } from '../inputInstructionType'
 
 // Types
 import { AssetAccount } from '@utils/uiTypes/assets'
-
-interface MeteoraStrategy {
-  name: string
-  value: number
-}
 
 interface MeteoraCreatePositionForm {
   governedAccount: AssetAccount | undefined
@@ -388,8 +380,8 @@ const DLMMCreatePosition = ({
         form.strategy.value === StrategyType.CurveOneSide ||
         form.strategy.value === StrategyType.BidAskOneSide ? [
       {
-        label: 'Single-Sided Position: Buy-Side or Sell-Side?',
-        subtitle: 'If enabled, strategy will be single-sided for the base token (Buy-Side), otherwise it will be single-sided for the quote token (Sell-Side).',
+        label: 'ENABLED: BUY-SIDE || DISABLED: SELL-SIDE',
+        subtitle: 'ENABLED: Strategy will be single-sided for the base token (Buy-Side). || DISABLED: Strategy will be single-sided for the quote token (Sell-Side).',
         initialValue: form.singleSidedX,
         name: 'singleSidedX',
         type: InstructionInputType.SWITCH
