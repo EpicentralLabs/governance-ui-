@@ -251,22 +251,24 @@ const DLMMCreatePosition = ({
       const priceAtActiveBin = dlmmPool.fromPricePerLamport(Number(activeBin.price))
       const totalYAmount = totalXAmount.mul(new BN(Number(priceAtActiveBin)))
 
-      // Generate position keypair and create account if needed
+      // Generate position keypair
       const positionKeypair = Keypair.generate()
       const prerequisiteInstructions: TransactionInstruction[] = []
-      const accountInfo = await connection.getAccountInfo(positionKeypair.publicKey)
-      
-      if (!accountInfo) {
-        prerequisiteInstructions.push(
-          SystemProgram.createAccount({
-            fromPubkey: wallet.publicKey,
-            newAccountPubkey: positionKeypair.publicKey,
-            lamports: await connection.getMinimumBalanceForRentExemption(128),
-            space: 128,
-            programId: new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo'),
-          })
-        )
-      }
+      const prerequisiteInstructionsSigners: Keypair[] = []
+
+      // Add position keypair to signers
+      prerequisiteInstructionsSigners.push(positionKeypair)
+
+      // First create the position account
+      prerequisiteInstructions.push(
+        SystemProgram.createAccount({
+          fromPubkey: wallet.publicKey,
+          newAccountPubkey: positionKeypair.publicKey,
+          lamports: await connection.getMinimumBalanceForRentExemption(200), // Increased space for safety
+          space: 200, // Increased space for safety
+          programId: new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo'),
+        })
+      )
 
       // Create position with calculated parameters
       const createPositionTx = await dlmmPool.initializePositionAndAddLiquidityByStrategy({
@@ -307,9 +309,10 @@ const DLMMCreatePosition = ({
         isValid: true,
         governance: form?.governedAccount?.governance,
         prerequisiteInstructions,
-        prerequisiteInstructionsSigners: [],
+        prerequisiteInstructionsSigners,
         chunkBy: 1,
       }
+
     } catch (err) {
       console.error('Error building create position instruction:', err)
       setFormErrors(prev => ({
@@ -440,7 +443,7 @@ const DLMMCreatePosition = ({
             const binStep = dlmmPool.lbPair.binStep
 
             // Use SDK's autoFillY function with proper lamport conversion
-            const quoteAmountLamports = autoFillYByStrategy(
+            const quoteAmountLamports = autoFillXByStrategy(
               activeBin.binId,
               binStep,
               new BN(baseAmount * 1e9), // Convert SOL to lamports
@@ -473,17 +476,42 @@ const DLMMCreatePosition = ({
       name: 'quoteTokenAmount',
       type: InstructionInputType.INPUT,
       inputType: 'number',
-      onChange: (value) => {
+      onChange: async (value) => {
         const quoteAmount = Number(value)
         if (isNaN(quoteAmount)) return
 
-        setForm(prev => ({
-          ...prev,
-          quoteTokenAmount: quoteAmount,
-          ...(prev.autofill && poolDetails ? {
-            baseTokenAmount: roundToDecimals(quoteAmount / poolDetails.current_price, 6)
-          } : {})
-        }))
+        if (form.autofill && poolDetails) {
+          try {
+            const dlmmPool = await DLMM.create(connection, new PublicKey(form.dlmmPoolAddress))
+            const activeBin = await dlmmPool.getActiveBin()
+            const binStep = dlmmPool.lbPair.binStep
+
+            // Use SDK's autoFillX function with proper lamport conversion
+            const baseAmountLamports = autoFillYByStrategy(
+              activeBin.binId,
+              binStep,
+              new BN(quoteAmount * 1e6), // Convert USDC to lamports
+              new BN(0),
+              new BN(0),
+              activeBin.binId - 10,
+              activeBin.binId + 10,
+              form.strategy.value
+            )
+
+            setForm(prev => ({
+              ...prev,
+              quoteTokenAmount: quoteAmount,
+              baseTokenAmount: roundToDecimals(Number(baseAmountLamports) / 1e9, 6) // Convert from SOL lamports
+            }))
+          } catch (err) {
+            console.error('Error in autofill:', err)
+          }
+        } else {
+          setForm(prev => ({
+            ...prev,
+            quoteTokenAmount: quoteAmount
+          }))
+        }
       }
     },
     {
