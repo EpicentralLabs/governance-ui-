@@ -328,7 +328,7 @@ const DLMMCreatePosition = ({
   const inputs: InstructionInput[] = [
     {
       label: 'Governance Wallet',
-      subtitle: 'Select the wallet that will manage the position',
+      subtitle: 'Select the wallet that will manage and pay to open the position (0.06 SOL refundable upon closing the position)',
       initialValue: form.governedAccount,
       name: 'governedAccount',
       type: InstructionInputType.GOVERNED_ACCOUNT,
@@ -393,10 +393,34 @@ const DLMMCreatePosition = ({
          form.strategy.value === StrategyType.BidAskOneSide) ? [
       {
         label: 'Autofill Base/Quote Token Amount?',
-        subtitle: 'If enabled, the base and quote token amounts will be autocalculated based on the pool details',
+        subtitle: 'If enabled, the base and quote token amounts will be autocalculated based on the current pool price',
         initialValue: form.autofill,
         name: 'autofill',
         type: InstructionInputType.SWITCH,
+        onChange: async (checked) => {
+          if (!checked || !poolDetails) return
+
+          try {
+            // If either amount exists, calculate the other based on current pool price
+            if (form.baseTokenAmount) {
+              const quoteAmount = form.baseTokenAmount * poolDetails.current_price
+              setForm(prev => ({
+                ...prev,
+                autofill: checked,
+                quoteTokenAmount: roundToDecimals(quoteAmount, 6)
+              }))
+            } else if (form.quoteTokenAmount) {
+              const baseAmount = form.quoteTokenAmount / poolDetails.current_price
+              setForm(prev => ({
+                ...prev,
+                autofill: checked,
+                baseTokenAmount: roundToDecimals(baseAmount, 6)
+              }))
+            }
+          } catch (err) {
+            console.error('Error in autofill:', err)
+          }
+        }
       }
     ] : []),
     {
@@ -415,26 +439,22 @@ const DLMMCreatePosition = ({
             const activeBin = await dlmmPool.getActiveBin()
             const binStep = dlmmPool.lbPair.binStep
 
-            const TOTAL_RANGE_INTERVAL = 10
-            const minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL
-            const maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL
-
-            // Use SDK's autoFillY function to calculate quote amount
-            const quoteAmount = autoFillYByStrategy(
+            // Use SDK's autoFillY function with proper lamport conversion
+            const quoteAmountLamports = autoFillYByStrategy(
               activeBin.binId,
               binStep,
-              new BN(baseAmount),
-              new BN(0), // amountXInActiveBin
-              new BN(0), // amountYInActiveBin
-              minBinId,
-              maxBinId,
+              new BN(baseAmount * 1e9), // Convert SOL to lamports
+              new BN(0),
+              new BN(0),
+              activeBin.binId - 10, // Reasonable range around active bin
+              activeBin.binId + 10,
               form.strategy.value
             )
 
             setForm(prev => ({
               ...prev,
               baseTokenAmount: baseAmount,
-              quoteTokenAmount: Number(quoteAmount)
+              quoteTokenAmount: roundToDecimals(Number(quoteAmountLamports) / 1e6, 6) // Convert from USDC lamports
             }))
           } catch (err) {
             console.error('Error in autofill:', err)
@@ -453,46 +473,17 @@ const DLMMCreatePosition = ({
       name: 'quoteTokenAmount',
       type: InstructionInputType.INPUT,
       inputType: 'number',
-      onChange: async (value) => {
+      onChange: (value) => {
         const quoteAmount = Number(value)
         if (isNaN(quoteAmount)) return
 
-        if (form.autofill && poolDetails) {
-          try {
-            const dlmmPool = await DLMM.create(connection, new PublicKey(form.dlmmPoolAddress))
-            const activeBin = await dlmmPool.getActiveBin()
-            const binStep = dlmmPool.lbPair.binStep
-
-            const TOTAL_RANGE_INTERVAL = 10
-            const minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL
-            const maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL
-
-            // Use SDK's autoFillX function to calculate base amount
-            const baseAmount = autoFillXByStrategy(
-              activeBin.binId,
-              binStep,
-              new BN(quoteAmount),
-              new BN(0), // amountXInActiveBin
-              new BN(0), // amountYInActiveBin
-              minBinId,
-              maxBinId,
-              form.strategy.value
-            )
-
-            setForm(prev => ({
-              ...prev,
-              baseTokenAmount: Number(baseAmount),
-              quoteTokenAmount: quoteAmount
-            }))
-          } catch (err) {
-            console.error('Error in autofill:', err)
-          }
-        } else {
-          setForm(prev => ({
-            ...prev,
-            quoteTokenAmount: quoteAmount
-          }))
-        }
+        setForm(prev => ({
+          ...prev,
+          quoteTokenAmount: quoteAmount,
+          ...(prev.autofill && poolDetails ? {
+            baseTokenAmount: roundToDecimals(quoteAmount / poolDetails.current_price, 6)
+          } : {})
+        }))
       }
     },
     {
