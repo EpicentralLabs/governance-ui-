@@ -17,9 +17,9 @@ import {
 } from '@solana/web3.js'
 
 // SDK & Program Imports
-import { toStrategyParameters } from '@meteora-ag/dlmm'
-import DLMM from '@meteora-ag/dlmm'
+import DLMM, { StrategyType, autoFillYByStrategy, autoFillXByStrategy } from '@meteora-ag/dlmm'
 import { BN as AnchorBN } from '@coral-xyz/anchor'
+import { Strategy } from '@meteora-ag/dlmm'
 
 // Hooks
 import { NewProposalContext } from '../../../new'
@@ -44,14 +44,16 @@ interface MeteoraCreatePositionForm {
   dlmmPoolAddress: string
   baseTokenAmount: number
   quoteTokenAmount: number
-  strategy: MeteoraStrategy
+  strategy: {
+    name: string
+    value: StrategyType
+  }
+  autofill: boolean
   minPrice: number
   maxPrice: number
   slippage: number
-  baseToken?: string
-  quoteToken?: string
-  binStep?: number
-  numBins?: number
+  singleSidedX?: boolean
+  singleSidedY?: boolean
 }
 
 interface UiInstruction {
@@ -92,14 +94,57 @@ const schema = yup.object().shape({
 // Strategy Options
 const strategyOptions = [
   {
-    name: 'Spot',
-    value: 6,
-    description:
-      'Provides a uniform distribution that is versatile and risk adjusted, suitable for any type of market and conditions. This is similar to setting a CLMM price range.',
+    name: 'Spot Balanced',
+    value: StrategyType.SpotBalanced,
+    description: 'Provides a uniform distribution that is versatile and risk adjusted, suitable for any type of market and conditions.',
   },
-  { name: 'Curve', value: 7 },
-  { name: 'Bid Ask', value: 8 },
+  {
+    name: 'Curve Balanced', 
+    value: StrategyType.CurveBalanced,
+    description: 'Creates a bell curve distribution centered around the current price, providing more liquidity near the middle.',
+  },
+  {
+    name: 'Bid Ask Balanced',
+    value: StrategyType.BidAskBalanced, 
+    description: 'Concentrates liquidity at the bid and ask prices, good for range-bound markets.',
+  },
+  {
+    name: 'Spot One Side',
+    value: StrategyType.SpotOneSide,
+    description: 'Uniform distribution on one side of the current price.',
+  },
+  {
+    name: 'Curve One Side',
+    value: StrategyType.CurveOneSide,
+    description: 'Bell curve distribution on one side of the current price.',
+  },
+  {
+    name: 'Bid Ask One Side',
+    value: StrategyType.BidAskOneSide,
+    description: 'Concentrated liquidity points on one side of the current price.',
+  },
+  {
+    name: 'Spot ImBalanced',
+    value: StrategyType.SpotImBalanced,
+    description: 'Uniform but imbalanced distribution across the range.',
+  },
+  {
+    name: 'Curve ImBalanced',
+    value: StrategyType.CurveImBalanced,
+    description: 'Bell curve with imbalanced distribution.',
+  },
+  {
+    name: 'Bid Ask ImBalanced',
+    value: StrategyType.BidAskImBalanced,
+    description: 'Concentrated points with imbalanced distribution.',
+  }
 ]
+
+// Add utility function at the top of the file
+const roundToDecimals = (value: number, decimals: 6): number => {
+  const multiplier = Math.pow(10, decimals)
+  return Math.round(value * multiplier) / multiplier
+}
 
 // Main Component
 const DLMMCreatePosition = ({
@@ -123,12 +168,14 @@ const DLMMCreatePosition = ({
     baseTokenAmount: 0,
     quoteTokenAmount: 0,
     slippage: 2,
+    autofill: true,
     strategy: {
-      name: 'Spot',
-      value: 6,
+      name: 'Spot Balanced',
+      value: StrategyType.SpotBalanced,
     },
     minPrice: 0,
     maxPrice: 0,
+    singleSidedX: false,
   })
 
   // Add state for pool details
@@ -183,73 +230,73 @@ const DLMMCreatePosition = ({
     try {
       const dlmmPoolAddress = new PublicKey(form.dlmmPoolAddress)
       const dlmmPool = await DLMM.create(connection, dlmmPoolAddress)
-      // await dlmmPool.refetchStates()
 
-      // Get active bin and calculate range
-      const activeBin = await dlmmPool.getActiveBin();
+      // Get bins between min and max price
+      const binRange = await dlmmPool.getBinsBetweenMinAndMaxPrice(
+        form.minPrice,
+        form.maxPrice
+      )
+
+      // Get active bin for reference
+      const activeBin = await dlmmPool.getActiveBin()
       const binStep = dlmmPool?.lbPair?.binStep
-      // Get active bin price per token
-      const activeBinPricePerToken = dlmmPool.fromPricePerLamport(
-        Number(activeBin.price)
-      );
-
-      const totalXAmount = new BN(form.baseTokenAmount);
-      const totalYAmount = totalXAmount.mul(new BN(Number(activeBinPricePerToken)));
 
       if (!binStep) {
         throw new Error('Bin step not available')
       }
 
-      // Generate position keypair
-      const signers: Keypair[] = []
-      const positionKeypair = Keypair.generate()
-
-      // Declare prerequisiteInstructions and filteredInstructions at the start
-      const prerequisiteInstructions: any[] = []
-      const filteredInstructions: any[] = []
-
-      // Check if the account already exists
-      const accountInfo = await connection.getAccountInfo(positionKeypair.publicKey)
-      if (!accountInfo) {
-        // Create account instruction
-        const createAccountIx = SystemProgram.createAccount({
-          fromPubkey: wallet.publicKey,
-          newAccountPubkey: positionKeypair.publicKey,
-          lamports: await connection.getMinimumBalanceForRentExemption(128),
-          space: 128,
-          programId: new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo'),
-        })
-
-        // Add the create account instruction to the prerequisite list
-        prerequisiteInstructions.push(createAccountIx)
+      // Validate price range
+      if (form.minPrice >= form.maxPrice) {
+        throw new Error('Min price must be less than max price')
       }
 
-      const TOTAL_RANGE_INTERVAL = 15; // 15 bins on each side of the active bin
-      const minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL;
-      const maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL;
+      // Use the bin range for position parameters
+      const minBinId = binRange.bins[0]?.binId ?? activeBin.binId - 15
+      const maxBinId = binRange.bins[binRange.bins.length - 1]?.binId ?? activeBin.binId + 15
 
-      // Create the position transaction
-      const createPositionTx =
-        await dlmmPool.initializePositionAndAddLiquidityByStrategy({
-          positionPubKey: positionKeypair.publicKey,
-          user: wallet?.publicKey,
-          totalXAmount, // base token amount
-          totalYAmount, // quote token amount
-          slippage: form.slippage,
-          strategy: {
-            maxBinId,
-            minBinId,
-            strategyType: form.strategy.value,
-          },
-        })
+      // Calculate amounts based on price range
+      const totalXAmount = new BN(form.baseTokenAmount)
+      const priceAtActiveBin = dlmmPool.fromPricePerLamport(Number(activeBin.price))
+      const totalYAmount = totalXAmount.mul(new BN(Number(priceAtActiveBin)))
 
+      // Generate position keypair and create account if needed
+      const positionKeypair = Keypair.generate()
+      const prerequisiteInstructions: TransactionInstruction[] = []
+      const accountInfo = await connection.getAccountInfo(positionKeypair.publicKey)
+      
+      if (!accountInfo) {
+        prerequisiteInstructions.push(
+          SystemProgram.createAccount({
+            fromPubkey: wallet.publicKey,
+            newAccountPubkey: positionKeypair.publicKey,
+            lamports: await connection.getMinimumBalanceForRentExemption(128),
+            space: 128,
+            programId: new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo'),
+          })
+        )
+      }
+
+      // Create position with calculated parameters
+      const createPositionTx = await dlmmPool.initializePositionAndAddLiquidityByStrategy({
+        positionPubKey: positionKeypair.publicKey,
+        user: wallet.publicKey,
+        totalXAmount,
+        totalYAmount,
+        slippage: form.slippage,
+        strategy: {
+          maxBinId,
+          minBinId,
+          strategyType: form.strategy.value,
+          singleSidedX: form.singleSidedX
+        }
+      })
 
       // Filter and combine instructions
-      filteredInstructions.push(
+      const filteredInstructions: TransactionInstruction[] = [
         ...createPositionTx.instructions.filter(
           ix => !ix.programId.equals(ComputeBudgetProgram.programId)
         )
-      )
+      ]
 
       if (filteredInstructions.length === 0) {
         throw new Error('No instructions returned by create position.')
@@ -268,12 +315,12 @@ const DLMMCreatePosition = ({
         isValid: true,
         governance: form?.governedAccount?.governance,
         prerequisiteInstructions,
-        prerequisiteInstructionsSigners: signers,
+        prerequisiteInstructionsSigners: [],
         chunkBy: 1,
       }
     } catch (err) {
       console.error('Error building create position instruction:', err)
-      setFormErrors((prev) => ({
+      setFormErrors(prev => ({
         ...prev,
         general: 'Error building create position instruction: ' + err.message,
       }))
@@ -285,7 +332,7 @@ const DLMMCreatePosition = ({
     }
   }
 
-// INSUTRCTION FORM
+  // INSUTRCTION FORM
   const inputs: InstructionInput[] = [
     {
       label: 'Governance Wallet',
@@ -330,38 +377,127 @@ const DLMMCreatePosition = ({
       type: InstructionInputType.SELECT,
       inputType: 'select',
       options: strategyOptions,
+      additionalComponent: (
+        <div className="text-sm text-neutral-500 mt-2">
+          {strategyOptions.find(opt => opt.value === form.strategy.value)?.description}
+        </div>
+      )
     },
+    // Conditionally show single-sided switch only for specific strategies
+    ...(form.strategy.value === StrategyType.SpotOneSide ||
+        form.strategy.value === StrategyType.CurveOneSide ||
+        form.strategy.value === StrategyType.BidAskOneSide ? [
+      {
+        label: 'Single-Sided Position: Buy-Side or Sell-Side?',
+        subtitle: 'If enabled, strategy will be single-sided for the base token (Buy-Side), otherwise it will be single-sided for the quote token (Sell-Side).',
+        initialValue: form.singleSidedX,
+        name: 'singleSidedX',
+        type: InstructionInputType.SWITCH
+      }
+    ] : []),
+    // Hide autofill for single-sided strategies
+    ...(!(form.strategy.value === StrategyType.SpotOneSide ||
+         form.strategy.value === StrategyType.CurveOneSide ||
+         form.strategy.value === StrategyType.BidAskOneSide) ? [
+      {
+        label: 'Autofill Base/Quote Token Amount?',
+        subtitle: 'If enabled, the base and quote token amounts will be autocalculated based on the pool details',
+        initialValue: form.autofill,
+        name: 'autofill',
+        type: InstructionInputType.SWITCH,
+      }
+    ] : []),
     {
-      label: 'Base Token Amount',
+      label: 'Base Token Amount (i.e. SOL)',
       initialValue: form.baseTokenAmount,
       name: 'baseTokenAmount',
       type: InstructionInputType.INPUT,
       inputType: 'number',
-      onChange: (value) => {
+      onChange: async (value) => {
         const baseAmount = Number(value)
-        if (poolDetails && !isNaN(baseAmount)) {
-          const quoteAmount = baseAmount * poolDetails.current_price
+        if (isNaN(baseAmount)) return
+        
+        if (form.autofill && poolDetails) {
+          try {
+            const dlmmPool = await DLMM.create(connection, new PublicKey(form.dlmmPoolAddress))
+            const activeBin = await dlmmPool.getActiveBin()
+            const binStep = dlmmPool.lbPair.binStep
+
+            const TOTAL_RANGE_INTERVAL = 10
+            const minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL
+            const maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL
+
+            // Use SDK's autoFillY function to calculate quote amount
+            const quoteAmount = autoFillYByStrategy(
+              activeBin.binId,
+              binStep,
+              new BN(baseAmount),
+              new BN(0), // amountXInActiveBin
+              new BN(0), // amountYInActiveBin
+              minBinId,
+              maxBinId,
+              form.strategy.value
+            )
+
+            setForm(prev => ({
+              ...prev,
+              baseTokenAmount: baseAmount,
+              quoteTokenAmount: Number(quoteAmount)
+            }))
+          } catch (err) {
+            console.error('Error in autofill:', err)
+          }
+        } else {
           setForm(prev => ({
             ...prev,
-            baseTokenAmount: baseAmount,
-            quoteTokenAmount: quoteAmount
+            baseTokenAmount: baseAmount
           }))
         }
       }
     },
     {
-      label: 'Quote Token Amount',
+      label: 'Quote Token Amount (i.e. USDC)',
       initialValue: form.quoteTokenAmount,
       name: 'quoteTokenAmount',
       type: InstructionInputType.INPUT,
       inputType: 'number',
-      onChange: (value) => {
+      onChange: async (value) => {
         const quoteAmount = Number(value)
-        if (poolDetails && !isNaN(quoteAmount)) {
-          const baseAmount = quoteAmount / poolDetails.current_price
+        if (isNaN(quoteAmount)) return
+
+        if (form.autofill && poolDetails) {
+          try {
+            const dlmmPool = await DLMM.create(connection, new PublicKey(form.dlmmPoolAddress))
+            const activeBin = await dlmmPool.getActiveBin()
+            const binStep = dlmmPool.lbPair.binStep
+
+            const TOTAL_RANGE_INTERVAL = 10
+            const minBinId = activeBin.binId - TOTAL_RANGE_INTERVAL
+            const maxBinId = activeBin.binId + TOTAL_RANGE_INTERVAL
+
+            // Use SDK's autoFillX function to calculate base amount
+            const baseAmount = autoFillXByStrategy(
+              activeBin.binId,
+              binStep,
+              new BN(quoteAmount),
+              new BN(0), // amountXInActiveBin
+              new BN(0), // amountYInActiveBin
+              minBinId,
+              maxBinId,
+              form.strategy.value
+            )
+
+            setForm(prev => ({
+              ...prev,
+              baseTokenAmount: Number(baseAmount),
+              quoteTokenAmount: quoteAmount
+            }))
+          } catch (err) {
+            console.error('Error in autofill:', err)
+          }
+        } else {
           setForm(prev => ({
             ...prev,
-            baseTokenAmount: baseAmount,
             quoteTokenAmount: quoteAmount
           }))
         }
@@ -369,32 +505,73 @@ const DLMMCreatePosition = ({
     },
     {
       label: 'Min Price',
+      subtitle: 'Minimum price for the position range',
       initialValue: form.minPrice,
       name: 'minPrice',
       type: InstructionInputType.INPUT,
       inputType: 'number',
-      additionalComponent: isLoadingPoolDetails ? (
-        <div className="text-sm text-neutral-500">Loading pool details...</div>
-      ) : poolDetails ? (
-        <div className="text-sm">
-          <p>Current Base Token Price: ${Number(poolDetails.current_price).toFixed(2)}</p>
+      additionalComponent: poolDetails ? (
+        <div className="text-sm text-neutral-500">
+          <p>Current market price: ${Number(poolDetails.current_price).toFixed(6)}</p>
+          <p>Suggested min: ${(Number(poolDetails.current_price) * 0.8).toFixed(6)}</p>
         </div>
       ) : null,
+      onChange: (value) => {
+        const numValue = Number(value)
+        if (!isNaN(numValue) && poolDetails) {
+          // Ensure min price is not too far from current price
+          const minAllowed = Number(poolDetails.current_price) * 0.5
+          const maxAllowed = Number(poolDetails.current_price) * 0.95
+          
+          if (numValue < minAllowed || numValue > maxAllowed) {
+            setFormErrors(prev => ({
+              ...prev,
+              minPrice: `Price should be between ${minAllowed.toFixed(6)} and ${maxAllowed.toFixed(6)}`
+            }))
+          } else {
+            setFormErrors(prev => {
+              const { minPrice, ...rest } = prev
+              return rest
+            })
+          }
+        }
+        setForm(prev => ({ ...prev, minPrice: numValue }))
+      }
     },
-    
     {
       label: 'Max Price',
+      subtitle: 'Maximum price for the position range',
       initialValue: form.maxPrice,
       name: 'maxPrice',
       type: InstructionInputType.INPUT,
       inputType: 'number',
-      additionalComponent: isLoadingPoolDetails ? (
-        <div className="text-sm text-neutral-500">Loading pool details...</div>
-      ) : poolDetails ? (
-        <div className="text-sm">
-          <p>Current Quote Token Price: ${Number(poolDetails.current_price).toFixed(2)}</p>
+      additionalComponent: poolDetails ? (
+        <div className="text-sm text-neutral-500">
+          <p>Current market price: ${Number(poolDetails.current_price).toFixed(6)}</p>
+          <p>Suggested max: ${(Number(poolDetails.current_price) * 1.2).toFixed(6)}</p>
         </div>
       ) : null,
+      onChange: (value) => {
+        const numValue = Number(value)
+        if (!isNaN(numValue) && poolDetails) {
+          // Ensure max price is not too far from current price
+          const minAllowed = Number(poolDetails.current_price) * 1.05
+          const maxAllowed = Number(poolDetails.current_price) * 1.5
+          
+          if (numValue < minAllowed || numValue > maxAllowed) {
+            setFormErrors(prev => ({
+              ...prev,
+              maxPrice: `Price should be between ${minAllowed.toFixed(6)} and ${maxAllowed.toFixed(6)}`
+            }))
+          } else {
+            setFormErrors(prev => {
+              const { maxPrice, ...rest } = prev
+              return rest
+            })
+          }
+        }
+        setForm(prev => ({ ...prev, maxPrice: numValue }))
+      }
     },
     {
       label: 'Slippage',
@@ -403,7 +580,7 @@ const DLMMCreatePosition = ({
       name: 'slippage',
       type: InstructionInputType.INPUT,
       inputType: 'number',
-    }
+    },
   ]
 
   useEffect(() => {
@@ -422,7 +599,7 @@ const DLMMCreatePosition = ({
           inputs={inputs}
           setFormErrors={setFormErrors}
           formErrors={formErrors}
-        ></InstructionForm>
+        />
       )}
     </>
   )
