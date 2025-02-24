@@ -265,10 +265,10 @@ const DLMMCreatePosition = ({
       // First create the position account
       prerequisiteInstructions.push(
         SystemProgram.createAccount({
-          fromPubkey: wallet?.publicKey, // Fee payer
+          fromPubkey: wallet.publicKey, // Fee payer
           newAccountPubkey: positionKeypair.publicKey,
-          lamports: await connection.getMinimumBalanceForRentExemption(1000), // Increased space for safety
-          space: 1000, // Increased space for safety
+          lamports: await connection.getMinimumBalanceForRentExemption(200), // Increased space for safety
+          space: 200, // Increased space for safety
           programId: new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo'),
         })
       )
