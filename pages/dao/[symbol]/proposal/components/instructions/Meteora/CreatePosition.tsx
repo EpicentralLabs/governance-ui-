@@ -30,6 +30,11 @@ import { InstructionInputType } from '../inputInstructionType'
 
 // Types
 import { AssetAccount } from '@utils/uiTypes/assets'
+import {
+  createAssociatedTokenAccountIdempotentInstruction,
+  getAssociatedTokenAddressSync,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+} from '@solana/spl-token-new'
 
 
 interface MeteoraCreatePositionForm {
@@ -71,6 +76,8 @@ interface DLMMPoolApiResponse {
   trade_volume_24h: number
   cumulative_trade_volume: number
   liquidity: number
+  mint_x: string
+  mint_y: string
 }
 
 // Validation Schema
@@ -132,6 +139,8 @@ const strategyOptions = [
     description: 'Concentrated points with imbalanced distribution.',
   }
 ]
+
+export const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
 
 // Add utility function at the top of the file
 const roundToDecimals = (value: number, decimals: 6): number => {
@@ -210,7 +219,7 @@ const DLMMCreatePosition = ({
     const isValid = await validateInstruction({ schema, form, setFormErrors })
     if (
       !isValid ||
-      !form?.governedAccount?.governance?.account ||
+      !form.governedAccount?.governance?.account ||
       !wallet?.publicKey ||
       !connected
     ) {
@@ -222,8 +231,101 @@ const DLMMCreatePosition = ({
     }
 
     try {
+      // 1. Initialize the DLMM pool connection
       const dlmmPoolAddress = new PublicKey(form.dlmmPoolAddress)
       const dlmmPool = await DLMM.create(connection, dlmmPoolAddress)
+
+      const owner = form.governedAccount?.governance?.pubkey
+      console.log('owner', owner)
+
+      if (!owner) {
+        throw new Error('Owner not found')
+      }
+
+      // Get pool info including mint addresses
+      if (!poolDetails) {
+        throw new Error('Pool details not found')
+      }
+
+      // Create PublicKeys from the mint addresses
+      const baseMint = new PublicKey(poolDetails.mint_x)
+      console.log('baseMint', baseMint)
+      const quoteMint = new PublicKey(poolDetails.mint_y)
+      console.log('quoteMint', quoteMint)
+
+      // Get token accounts
+      const baseTokenAccount = getAssociatedTokenAddressSync(
+        baseMint,
+        owner,
+        true,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID,
+      )
+      console.log('baseTokenAccount', baseTokenAccount)
+      const quoteTokenAccount = getAssociatedTokenAddressSync(
+        quoteMint,
+        owner,
+        true,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID,
+      )
+      console.log('quoteTokenAccount', quoteTokenAccount)
+
+      const prerequisiteInstructions: TransactionInstruction[] = []
+      const prerequisiteInstructionsSigners: Keypair[] = []
+
+      // Check if token accounts exist and create them if they don't
+      const [baseAccountInfo, quoteAccountInfo] = await Promise.all([
+        connection.getAccountInfo(baseTokenAccount),
+        connection.getAccountInfo(quoteTokenAccount),
+      ])
+      console.log('baseAccountInfo', baseAccountInfo)
+      console.log('quoteAccountInfo', quoteAccountInfo)
+
+      const doesBaseAccountExist = baseAccountInfo && baseAccountInfo?.lamports > 0
+      console.log('doesBaseAccountExist', doesBaseAccountExist)
+
+      const doesQuoteAccountExist = quoteAccountInfo && quoteAccountInfo?.lamports > 0
+      console.log('doesQuoteAccountExist', doesQuoteAccountExist)
+
+      if (!doesBaseAccountExist) {
+        prerequisiteInstructions.push(
+          createAssociatedTokenAccountIdempotentInstruction(
+            wallet.publicKey,
+            baseTokenAccount,
+            owner,
+            baseMint,
+          )
+        )
+      }
+
+      if (!doesQuoteAccountExist) {
+        prerequisiteInstructions.push(
+          createAssociatedTokenAccountIdempotentInstruction(
+            wallet.publicKey,
+            quoteTokenAccount,
+            owner,
+            quoteMint,
+          )
+        )
+      }
+
+      // Check balances if accounts exist
+      if (doesBaseAccountExist && doesQuoteAccountExist) {
+        const [baseBalance, quoteBalance] = await Promise.all([
+          connection.getTokenAccountBalance(baseTokenAccount),
+          connection.getTokenAccountBalance(quoteTokenAccount),
+        ])
+        console.log('baseBalance (Balance in the base token account)', baseBalance)
+        console.log('quoteBalance (Balance in the quote token account)', quoteBalance)
+
+        if (!baseBalance.value.uiAmount || baseBalance.value.uiAmount < form.baseTokenAmount) {
+          throw new Error(`Insufficient base token balance. Available: ${baseBalance.value.uiAmount || 0}`)
+        }
+        if (!quoteBalance.value.uiAmount || quoteBalance.value.uiAmount < form.quoteTokenAmount) {
+          throw new Error(`Insufficient quote token balance. Available: ${quoteBalance.value.uiAmount || 0}`)
+        }
+      }
 
       // Get bins between min and max price
       const binRange = await dlmmPool.getBinsBetweenMinAndMaxPrice(
@@ -234,6 +336,9 @@ const DLMMCreatePosition = ({
       // Get active bin for reference
       const activeBin = await dlmmPool.getActiveBin()
       const binStep = dlmmPool.lbPair.binStep
+      console.log('binRange', binRange)
+      console.log('activeBin', activeBin)
+      console.log('binStep', binStep)
 
       if (!binStep) {
         throw new Error('Bin step not available')
@@ -250,36 +355,33 @@ const DLMMCreatePosition = ({
 
       // Calculate amounts based on price range
       const totalXAmount = new BN(form.baseTokenAmount)
+      console.log('totalXAmount', totalXAmount)
       const totalYAmount = new BN(form.quoteTokenAmount)
+      console.log('totalYAmount', totalYAmount)
 
       // Generate position keypair
-      const positionKeypair = Keypair.generate()
-      console.log('Position keypair:', positionKeypair.publicKey.toBase58())
+      const newPosition = Keypair.generate()
+      console.log('Position keypair:', newPosition.publicKey.toBase58())
 
-      const prerequisiteInstructions: TransactionInstruction[] = []
-      console.log('Prerequisite instructions:', prerequisiteInstructions)
-
-      const prerequisiteInstructionsSigners: Keypair[] = [positionKeypair]
-      console.log('Prerequisite instructions signers:', prerequisiteInstructionsSigners)
-
-      // First create the position account
+      // Create position account
       prerequisiteInstructions.push(
         SystemProgram.createAccount({
-          fromPubkey: wallet.publicKey, // Fee payer
-          newAccountPubkey: positionKeypair.publicKey,
-          lamports: await connection.getMinimumBalanceForRentExemption(200), // Increased space for safety
-          space: 200, // Increased space for safety
+          fromPubkey: wallet.publicKey,
+          newAccountPubkey: newPosition.publicKey,
+          lamports: await connection.getMinimumBalanceForRentExemption(200),
+          space: 200,
           programId: new PublicKey('LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo'),
         })
       )
-      console.log('Position keypair:', positionKeypair.publicKey.toBase58())
 
-      // Create position with calculated parameters
+      prerequisiteInstructionsSigners.push(newPosition)
+
+      // 2. Create the actual position instruction
       const createPositionTx = await dlmmPool.initializePositionAndAddLiquidityByStrategy({
-        positionPubKey: positionKeypair.publicKey,
+        positionPubKey: newPosition.publicKey,
         user: wallet.publicKey,
-        totalXAmount, // base token amount
-        totalYAmount, // quote token amount
+        totalXAmount,
+        totalYAmount,
         slippage: form.slippage,
         strategy: {
           maxBinId,
@@ -288,9 +390,8 @@ const DLMMCreatePosition = ({
           singleSidedX: form.singleSidedX
         }
       })
-      console.log('Create position transaction:', createPositionTx)
 
-      // Filter and combine instructions
+      // 3. The instructions are filtered and serialized for on-chain execution
       const filteredInstructions: TransactionInstruction[] = [
         ...createPositionTx.instructions.filter(
           ix => !ix.programId.equals(ComputeBudgetProgram.programId)
